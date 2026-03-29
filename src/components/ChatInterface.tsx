@@ -20,11 +20,13 @@ import {
   AlertTriangle, Clock, ArrowRight, RotateCcw, Shield, MapPin, History,
   FileText, RefreshCw, ArrowLeft, Ban, XCircle, Send, Download,
   FileDown, ImageDown, ChevronDown, Info, Zap, BookOpen, MessageCircle,
-  Play, Calendar as CalendarList
+  Play, Calendar as CalendarList, Sparkles, X
 } from "lucide-react";
 import { sendOtp, memberLookup, freezeMembership, unfreezeMembership, restartMembership, sendConfirmation, freezeHistory, memberBookings, sessionsList } from "@/lib/momenceApi";
 import { findFaqAnswer } from "@/lib/faqKnowledge";
 import frostieAvatar from "@/assets/frostie-avatar.png";
+import InteractiveRobotSpline from "@/components/InteractiveRobotSpline";
+import { ROBOT_SPLINE_URL } from "@/lib/galleryImages";
 
 type Step =
   | 'welcome' | 'ask-name' | 'ask-email' | 'ask-phone'
@@ -142,6 +144,20 @@ function getIneligibleBadge(m: MembershipView): { text: string; color: string } 
 
 function formatTime(d: Date) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function isInlineInputWidget(widget?: string) {
+  return [
+    'ask-name-input',
+    'ask-email-input',
+    'ask-phone-input',
+    'otp',
+    'chat-input',
+  ].includes(widget || '');
 }
 
 export default function ChatInterface({ onComplete }: { onComplete?: () => void }) {
@@ -754,49 +770,213 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
     return lines;
   };
 
+  const handleBottomComposerSubmit = () => {
+    if (step === 'ask-name') {
+      handleNameSubmit();
+      return;
+    }
+    if (step === 'ask-email') {
+      handleEmailSubmit();
+      return;
+    }
+    if (step === 'ask-phone') {
+      void handlePhoneSubmit();
+      return;
+    }
+    if (step === 'otp') {
+      void handleOtpVerify();
+      return;
+    }
+    if (step === 'chat') {
+      void handleChatSubmit();
+    }
+  };
+
+  const renderBottomComposer = () => {
+    if (step === 'ask-name') {
+      return (
+        <div className="flex items-center gap-2">
+          <Input
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleBottomComposerSubmit()}
+            placeholder="Type your full name"
+            className="h-11 rounded-full border-white/70 bg-white px-4 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+            autoFocus
+          />
+          <Button onClick={handleBottomComposerSubmit} disabled={!nameInput.trim().includes(' ')} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      );
+    }
+
+    if (step === 'ask-email') {
+      return (
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+            <Input
+              type="email"
+              value={emailInput}
+              onChange={e => setEmailInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleBottomComposerSubmit()}
+              placeholder="Type your email address"
+              className="h-11 rounded-full border-white/70 bg-white pl-9 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+              autoFocus
+            />
+          </div>
+          <Button onClick={handleBottomComposerSubmit} disabled={!emailInput.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      );
+    }
+
+    if (step === 'ask-phone') {
+      return (
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+            <Input
+              value={phoneInput}
+              onChange={e => setPhoneInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleBottomComposerSubmit()}
+              placeholder="Type your phone number with country code"
+              className="h-11 rounded-full border-white/70 bg-white pl-9 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+              autoFocus
+            />
+          </div>
+          <Button onClick={handleBottomComposerSubmit} disabled={!phoneInput.trim() || phoneInput.trim().length < 6 || isLoading} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
+      );
+    }
+
+    if (step === 'otp') {
+      return (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex-1 overflow-x-auto">
+            <InputOTP maxLength={6} value={otpCode} onChange={setOtpCode}>
+              <InputOTPGroup>
+                {[0, 1, 2, 3, 4, 5].map(i => (
+                  <InputOTPSlot key={i} index={i} className="h-11 w-11 rounded-xl border-white/80 bg-white text-sm shadow-sm" />
+                ))}
+              </InputOTPGroup>
+            </InputOTP>
+          </div>
+          <Button onClick={handleBottomComposerSubmit} disabled={otpCode.length !== 6 || isLoading} className="h-11 rounded-full px-5 gradient-primary text-primary-foreground shadow-lg shadow-primary/20">
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            Verify
+          </Button>
+        </div>
+      );
+    }
+
+    if (step === 'chat') {
+      return (
+        <div className="flex items-center gap-2">
+          <Input
+            value={chatInput}
+            onChange={e => setChatInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleBottomComposerSubmit()}
+            placeholder="Type your message"
+            className="h-11 rounded-full border-white/70 bg-white px-4 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+            autoFocus
+          />
+          <Button onClick={handleBottomComposerSubmit} disabled={!chatInput.trim()} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center justify-center gap-2.5 text-center">
+        {[
+          "Immediate freeze & unfreeze",
+          "All memberships history",
+          "Live bookings & schedule help",
+        ].map((item) => (
+          <span
+            key={item}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[10px] font-semibold text-slate-500 shadow-sm"
+          >
+            <Snowflake className="h-3 w-3 text-sky-500" />
+            {item}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   // ─── Widget renderers ───
   const renderWidget = (msg: ChatMsg) => {
     if (msg.dismissed) return null;
+    if (isInlineInputWidget(msg.widget)) return null;
 
     switch (msg.widget) {
       case 'ask-name-input':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="flex gap-2 items-center">
-              <Input
-                value={nameInput}
-                onChange={e => setNameInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleNameSubmit()}
-                placeholder="e.g. John Doe"
-                className="h-10 text-sm bg-background border-border rounded-full px-4 focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
-                autoFocus
-              />
-              <Button onClick={handleNameSubmit} disabled={!nameInput.trim().includes(' ')} size="icon" className="h-10 w-10 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
-                <Send className="h-4 w-4" />
-              </Button>
+            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 shadow-sm">
+                  <User className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Profile step 1</p>
+                  <p className="text-sm font-semibold text-slate-900">Let’s start with your full name</p>
+                </div>
+              </div>
+              <div className="flex gap-2 items-center">
+                <Input
+                  value={nameInput}
+                  onChange={e => setNameInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleNameSubmit()}
+                  placeholder="e.g. John Doe"
+                  className="h-11 rounded-full border-white/70 bg-white/90 px-4 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                  autoFocus
+                />
+                <Button onClick={handleNameSubmit} disabled={!nameInput.trim().includes(' ')} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="ml-1 mt-2 text-[11px] text-slate-500">First and last name please ✨</p>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1 ml-3">First and last name please ✨</p>
           </motion.div>
         );
 
       case 'ask-email-input':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="flex gap-2 items-center">
-              <div className="relative flex-1">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
-                <Input
-                  type="email" value={emailInput}
-                  onChange={e => setEmailInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()}
-                  placeholder="you@example.com"
-                  className="pl-9 h-10 text-sm bg-background border-border rounded-full focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
-                  autoFocus
-                />
+            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 shadow-sm">
+                  <Mail className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Profile step 2</p>
+                  <p className="text-sm font-semibold text-slate-900">Where should we send verification?</p>
+                </div>
               </div>
-              <Button onClick={handleEmailSubmit} disabled={!emailInput.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)} size="icon" className="h-10 w-10 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
-                <Send className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-2 items-center">
+                <div className="relative flex-1">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                  <Input
+                    type="email" value={emailInput}
+                    onChange={e => setEmailInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()}
+                    placeholder="you@example.com"
+                    className="pl-9 h-11 rounded-full border-white/70 bg-white/90 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                    autoFocus
+                  />
+                </div>
+                <Button onClick={handleEmailSubmit} disabled={!emailInput.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </motion.div>
         );
@@ -804,34 +984,54 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'ask-phone-input':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="flex gap-2 items-center">
-              <div className="relative flex-1">
-                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
-                <Input
-                  value={phoneInput}
-                  onChange={e => setPhoneInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handlePhoneSubmit()}
-                  placeholder="+91 9876543210"
-                  className="pl-9 h-10 text-sm bg-background border-border rounded-full focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
-                  autoFocus
-                />
+            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-sm">
+                  <Phone className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Profile step 3</p>
+                  <p className="text-sm font-semibold text-slate-900">One last detail—your phone number</p>
+                </div>
               </div>
-              <Button onClick={handlePhoneSubmit} disabled={!phoneInput.trim() || phoneInput.trim().length < 6 || isLoading} size="icon" className="h-10 w-10 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
+              <div className="flex gap-2 items-center">
+                <div className="relative flex-1">
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                  <Input
+                    value={phoneInput}
+                    onChange={e => setPhoneInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handlePhoneSubmit()}
+                    placeholder="+91 9876543210"
+                    className="pl-9 h-11 rounded-full border-white/70 bg-white/90 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                    autoFocus
+                  />
+                </div>
+                <Button onClick={handlePhoneSubmit} disabled={!phoneInput.trim() || phoneInput.trim().length < 6 || isLoading} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="ml-1 mt-2 text-[11px] text-slate-500">Include country code (for example, +91)</p>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1 ml-3">Include country code (e.g. +91)</p>
           </motion.div>
         );
 
       case 'otp':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+            <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 shadow-sm">
+                  <Shield className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Secure verification</p>
+                  <p className="text-sm font-semibold text-slate-900">Enter the 6-digit code from your inbox</p>
+                </div>
+              </div>
               <div className="flex justify-center">
                 <InputOTP maxLength={6} value={otpCode} onChange={setOtpCode}>
                   <InputOTPGroup>
-                    {[0,1,2,3,4,5].map(i => <InputOTPSlot key={i} index={i} className="h-11 w-11 text-sm bg-background border-border rounded-xl" />)}
+                    {[0,1,2,3,4,5].map(i => <InputOTPSlot key={i} index={i} className="h-11 w-11 text-sm bg-white border-white/80 shadow-sm rounded-xl" />)}
                   </InputOTPGroup>
                 </InputOTP>
               </div>
@@ -846,7 +1046,17 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'operations':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-[26px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Choose your path</p>
+                  <h3 className="text-base font-semibold text-slate-950">What would you like Frostie to help with?</h3>
+                </div>
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-semibold text-sky-700">
+                  Member tools
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
               {[
                 { op: 'freeze' as Operation, icon: Snowflake, label: 'Freeze', desc: 'Pause membership', color: 'from-blue-500/10 to-blue-600/5 border-blue-200/60 hover:border-blue-300' },
                 { op: 'modify' as Operation, icon: Clock, label: 'Modify / Unfreeze', desc: 'Change or end freeze', color: 'from-amber-500/10 to-amber-600/5 border-amber-200/60 hover:border-amber-300' },
@@ -861,29 +1071,33 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   whileTap={{ scale: 0.98 }}
                   onClick={() => handleOperation(op)}
                   className={cn(
-                    "flex flex-col items-start gap-1 p-3.5 rounded-xl border bg-gradient-to-br transition-all cursor-pointer text-left",
+                    "group flex min-h-[108px] flex-col items-start gap-2 rounded-2xl border bg-gradient-to-br p-3.5 text-left shadow-sm transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md",
                     color
                   )}
                 >
-                  <Icon className="h-4 w-4 text-foreground/70" />
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white/75 text-slate-700 shadow-sm transition-transform group-hover:scale-105">
+                    <Icon className="h-4 w-4" />
+                  </span>
                   <span className="text-[13px] font-semibold text-foreground">{label}</span>
-                  <span className="text-[10px] text-muted-foreground">{desc}</span>
+                  <span className="text-[10px] leading-relaxed text-muted-foreground">{desc}</span>
                 </motion.button>
               ))}
-            </div>
-            {/* Ask a question - full width */}
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => handleOperation('ask')}
-              className="w-full mt-2 flex items-center gap-2 p-3 rounded-xl border bg-gradient-to-br from-indigo-500/10 to-indigo-600/5 border-indigo-200/60 hover:border-indigo-300 transition-all cursor-pointer text-left"
-            >
-              <MessageCircle className="h-4 w-4 text-foreground/70" />
-              <div>
-                <span className="text-[13px] font-semibold text-foreground">Ask Frostie</span>
-                <span className="text-[10px] text-muted-foreground ml-2">Classes, pricing, method & more</span>
               </div>
-            </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => handleOperation('ask')}
+                className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-indigo-200/70 bg-gradient-to-r from-indigo-500/10 via-violet-500/10 to-fuchsia-500/10 p-3.5 text-left shadow-sm transition-all hover:border-indigo-300 hover:shadow-md"
+              >
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/75 text-indigo-600 shadow-sm">
+                  <MessageCircle className="h-4 w-4" />
+                </span>
+                <div>
+                  <div className="text-[13px] font-semibold text-foreground">Ask Frostie anything</div>
+                  <div className="text-[10px] text-muted-foreground">Classes, packages, brand questions, or a little gentle hand-holding</div>
+                </div>
+              </motion.button>
+            </div>
           </motion.div>
         );
 
@@ -892,6 +1106,19 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
         const list = msg.widget === 'memberships-all' ? memberships : filteredMemberships;
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5 space-y-2">
+            <div className="mb-1 rounded-[24px] border border-white/70 bg-white/80 p-3.5 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Membership selection</p>
+                  <h3 className="text-sm font-semibold text-slate-950">
+                    {operation === 'freeze' ? 'Choose the membership you want to freeze' : 'Choose the membership you want to manage'}
+                  </h3>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-semibold text-slate-600">
+                  {list.length} found
+                </span>
+              </div>
+            </div>
             {list.map(m => {
               const ineligible = operation === 'freeze' ? getIneligibleBadge(m) : null;
               const isClickable = operation === 'freeze' ? m.actions.canFreeze : true;
@@ -904,17 +1131,27 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   onClick={() => isClickable && handleMembershipSelect(m)}
                   disabled={!isClickable}
                   className={cn(
-                    "w-full text-left border rounded-xl p-3.5 transition-all group",
+                    "group w-full rounded-[22px] border p-4 text-left transition-all",
                     m.isFrozen && "ring-2 ring-blue-300/40",
                     isClickable
-                      ? "bg-card border-border hover:border-primary/30 hover:shadow-md cursor-pointer"
-                      : "bg-muted/30 border-border/30 opacity-60 cursor-not-allowed"
+                      ? "border-white/70 bg-white/80 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.25)] backdrop-blur-xl cursor-pointer hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+                      : "bg-white/50 border-white/40 opacity-60 cursor-not-allowed"
                   )}
                 >
-                  <div className="flex items-start justify-between mb-1.5">
-                    <h4 className={cn("font-semibold text-[13px]", isClickable ? "text-foreground group-hover:text-primary" : "text-muted-foreground")}>
-                      {m.membership.name}
-                    </h4>
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 shadow-sm">
+                          <Snowflake className="h-4 w-4" />
+                        </span>
+                        <h4 className={cn("font-semibold text-[14px]", isClickable ? "text-foreground group-hover:text-primary" : "text-muted-foreground")}>
+                          {m.membership.name}
+                        </h4>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        {m.membership.duration} {m.membership.durationUnit}{m.membership.duration > 1 ? 's' : ''} · {m.type}
+                      </p>
+                    </div>
                     <div className="flex gap-1 flex-wrap justify-end">
                       {m.isFrozen && (
                         <Badge className="text-[8px] font-bold bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 animate-pulse">
@@ -933,11 +1170,15 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                       )}
                     </div>
                   </div>
-                  <div className="space-y-0.5 text-[10px] text-muted-foreground">
+                  <div className="grid gap-2 rounded-2xl border border-slate-200/70 bg-slate-50/70 p-3 text-[11px] text-slate-600 sm:grid-cols-2">
                     <div className="flex items-center gap-2.5">
-                      <span className="flex items-center gap-0.5"><CalendarIcon className="h-2.5 w-2.5" />{new Date(m.startDate).toLocaleDateString()} → {new Date(m.endDate).toLocaleDateString()}</span>
-                      <span className="flex items-center gap-0.5"><MapPin className="h-2.5 w-2.5" />{m.location}</span>
+                      <span className="flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{formatShortDate(m.startDate)} → {formatShortDate(m.endDate)}</span>
                     </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{m.location}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-1 text-[10px] text-muted-foreground">
                     {m.freezePolicy && (
                       <div className="flex items-center gap-1">
                         <History className="h-2.5 w-2.5" />
@@ -950,16 +1191,28 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                         <span>No freeze policy assigned</span>
                       </div>
                     )}
+                    {m.scheduledUnfreezeAt && (
+                      <div className="flex items-center gap-1 text-emerald-700">
+                        <Clock className="h-2.5 w-2.5" />
+                        <span>Scheduled to resume on {formatShortDate(m.scheduledUnfreezeAt)}</span>
+                      </div>
+                    )}
+                    {m.scheduledFreezeAt && !m.isFrozen && (
+                      <div className="flex items-center gap-1 text-amber-700">
+                        <Clock className="h-2.5 w-2.5" />
+                        <span>Scheduled freeze starts on {formatShortDate(m.scheduledFreezeAt)}</span>
+                      </div>
+                    )}
                   </div>
                   {isClickable && (
-                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-primary/50 group-hover:text-primary transition-colors">
-                      <span>Select</span><ArrowRight className="h-2.5 w-2.5" />
+                    <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-primary/70 group-hover:text-primary transition-colors">
+                      <span>Select membership</span><ArrowRight className="h-3 w-3" />
                     </div>
                   )}
                 </motion.button>
               );
             })}
-            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1">
+            <button onClick={handleBackToOperations} className="mt-2 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors">
               ← Back to options
             </button>
           </motion.div>
@@ -969,14 +1222,19 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'freeze-reason':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="flex flex-wrap gap-1.5">
+            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Optional context</p>
+                <h3 className="text-sm font-semibold text-slate-950">Why are you freezing this membership?</h3>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
               {FREEZE_REASONS.map(r => (
                 <motion.button
                   key={r.id}
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => handleReasonSelect(r.id)}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-full border border-border bg-card text-[12px] font-medium text-foreground hover:bg-primary/5 hover:border-primary/30 transition-all"
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-foreground shadow-sm transition-all hover:border-primary/30 hover:bg-primary/5"
                 >
                   <span>{r.emoji}</span>{r.label}
                 </motion.button>
@@ -985,10 +1243,11 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={handleSkipReason}
-                className="inline-flex items-center px-3 py-2 rounded-full border border-dashed border-border bg-transparent text-[11px] text-muted-foreground hover:text-foreground transition-all"
+                className="inline-flex items-center rounded-full border border-dashed border-slate-300 bg-transparent px-3 py-2 text-[11px] text-muted-foreground transition-all hover:text-foreground"
               >
                 Skip →
               </motion.button>
+            </div>
             </div>
           </motion.div>
         );
@@ -996,14 +1255,21 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'freeze-mode':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Freeze options</p>
+                <h3 className="text-sm font-semibold text-slate-950">Do you want to freeze immediately or schedule dates?</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleFreezeNow}
-                className="flex flex-col items-center gap-1.5 p-4 rounded-xl border bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-200/60 hover:border-blue-400 transition-all"
+                className="flex flex-col items-center gap-2 rounded-2xl border border-blue-200/70 bg-gradient-to-br from-blue-500/10 to-sky-500/5 p-4 shadow-sm transition-all hover:border-blue-400 hover:shadow-md"
               >
-                <Zap className="h-5 w-5 text-blue-500" />
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-blue-600 shadow-sm">
+                  <Zap className="h-5 w-5" />
+                </span>
                 <span className="text-[13px] font-bold text-foreground">Freeze Now</span>
                 <span className="text-[9px] text-muted-foreground">Immediate effect</span>
               </motion.button>
@@ -1011,14 +1277,17 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleScheduleFreeze}
-                className="flex flex-col items-center gap-1.5 p-4 rounded-xl border bg-gradient-to-br from-indigo-500/10 to-indigo-600/5 border-indigo-200/60 hover:border-indigo-400 transition-all"
+                className="flex flex-col items-center gap-2 rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-500/10 to-violet-500/5 p-4 shadow-sm transition-all hover:border-indigo-400 hover:shadow-md"
               >
-                <CalendarIcon className="h-5 w-5 text-indigo-500" />
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-indigo-600 shadow-sm">
+                  <CalendarIcon className="h-5 w-5" />
+                </span>
                 <span className="text-[13px] font-bold text-foreground">Schedule</span>
                 <span className="text-[9px] text-muted-foreground">Pick start & end dates</span>
               </motion.button>
             </div>
-            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2">
+            </div>
+            <button onClick={handleBackToOperations} className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors mt-2">
               ← Back to options
             </button>
           </motion.div>
@@ -1027,14 +1296,21 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'unfreeze-mode':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Unfreeze options</p>
+                <h3 className="text-sm font-semibold text-slate-950">How would you like this membership to resume?</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleUnfreezeNow}
-                className="flex flex-col items-center gap-1.5 p-4 rounded-xl border bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-200/60 hover:border-emerald-400 transition-all"
+                className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-500/10 to-teal-500/5 p-4 shadow-sm transition-all hover:border-emerald-400 hover:shadow-md"
               >
-                <Zap className="h-5 w-5 text-emerald-500" />
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-emerald-600 shadow-sm">
+                  <Zap className="h-5 w-5" />
+                </span>
                 <span className="text-[13px] font-bold text-foreground">Unfreeze Now</span>
                 <span className="text-[9px] text-muted-foreground">Resume immediately</span>
               </motion.button>
@@ -1042,14 +1318,17 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleScheduleUnfreeze}
-                className="flex flex-col items-center gap-1.5 p-4 rounded-xl border bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-200/60 hover:border-amber-400 transition-all"
+                className="flex flex-col items-center gap-2 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-500/10 to-orange-500/5 p-4 shadow-sm transition-all hover:border-amber-400 hover:shadow-md"
               >
-                <CalendarIcon className="h-5 w-5 text-amber-500" />
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-amber-600 shadow-sm">
+                  <CalendarIcon className="h-5 w-5" />
+                </span>
                 <span className="text-[13px] font-bold text-foreground">Schedule</span>
                 <span className="text-[9px] text-muted-foreground">Pick a date</span>
               </motion.button>
             </div>
-            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2">
+            </div>
+            <button onClick={handleBackToOperations} className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors mt-2">
               ← Back to options
             </button>
           </motion.div>
@@ -1058,7 +1337,11 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'freeze-dates':
         return selectedMembership ? (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+            <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl space-y-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Schedule freeze</p>
+                <h3 className="text-sm font-semibold text-slate-950">Choose your freeze window</h3>
+              </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <Label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 block">Start</Label>
@@ -1091,7 +1374,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
               </div>
 
               {freezeDays > 0 && (
-                <div className="bg-primary/5 border border-primary/10 rounded-lg p-2.5 text-[11px] space-y-0.5">
+                <div className="rounded-2xl border border-primary/10 bg-primary/5 p-3 text-[11px] space-y-0.5">
                   <p className="font-semibold text-foreground">{freezeDays} day{freezeDays !== 1 ? 's' : ''} selected</p>
                   {resumeDateCalc && <p className="text-muted-foreground">Resume: <span className="font-medium text-foreground">{format(resumeDateCalc, 'dd MMM yyyy')}</span></p>}
                 </div>
@@ -1110,7 +1393,11 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'modify-unfreeze':
         return selectedMembership ? (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+            <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl space-y-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Schedule unfreeze</p>
+                <h3 className="text-sm font-semibold text-slate-950">Choose when this membership should resume</h3>
+              </div>
               <div>
                 <Label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 block">Unfreeze Date</Label>
                 <Popover>
@@ -1143,20 +1430,31 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'chat-input':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="flex gap-2 items-center">
-              <Input
-                value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleChatSubmit()}
-                placeholder="Ask me anything about P57..."
-                className="h-10 text-sm bg-background border-border rounded-full px-4 focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
-                autoFocus
-              />
-              <Button onClick={handleChatSubmit} disabled={!chatInput.trim()} size="icon" className="h-10 w-10 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
-                <Send className="h-4 w-4" />
-              </Button>
+            <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-sm">
+                  <MessageCircle className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Ask Frostie</p>
+                  <p className="text-sm font-semibold text-slate-900">Need help beyond workflows? Ask away.</p>
+                </div>
+              </div>
+              <div className="flex gap-2 items-center">
+                <Input
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleChatSubmit()}
+                  placeholder="Ask me anything about P57..."
+                  className="h-11 rounded-full border-white/70 bg-white/90 px-4 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                  autoFocus
+                />
+                <Button onClick={handleChatSubmit} disabled={!chatInput.trim()} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1.5 ml-1">
+            <button onClick={handleBackToOperations} className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors mt-1.5 ml-1">
               ← Back to menu
             </button>
           </motion.div>
@@ -1166,40 +1464,59 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
         const bookings = (msg.widgetData || []) as any[];
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5 space-y-2">
+            <div className="rounded-[24px] border border-white/70 bg-white/85 p-3.5 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Bookings & visits</p>
+                  <h3 className="text-sm font-semibold text-slate-950">Your latest class activity</h3>
+                </div>
+                <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-semibold text-rose-700">
+                  {bookings.length} total
+                </span>
+              </div>
+            </div>
             {bookings.slice(0, 10).map((b: any) => (
-              <div key={b.id} className={cn("bg-card border rounded-xl p-3 shadow-sm", b.cancelledAt ? "border-red-200/50 opacity-60" : "border-border")}>
-                <div className="flex items-start justify-between mb-1">
-                  <h4 className="text-[12px] font-bold text-foreground">{b.session?.name || 'Class'}</h4>
+              <div key={b.id} className={cn("rounded-[22px] border p-3.5 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.22)] backdrop-blur-xl", b.cancelledAt ? "border-red-200/60 bg-red-50/40 opacity-75" : "border-white/70 bg-white/85")}>
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 shadow-sm">
+                        <BookOpen className="h-4 w-4" />
+                      </span>
+                      <h4 className="text-[13px] font-bold text-foreground">{b.session?.name || 'Class'}</h4>
+                    </div>
+                    <p className="text-[10px] text-slate-500">Booking ID #{b.id}</p>
+                  </div>
                   <div className="flex gap-1">
                     {b.checkedIn && <Badge className="text-[7px] bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100">✓ Attended</Badge>}
                     {b.cancelledAt && <Badge className="text-[7px] bg-red-100 text-red-600 border-red-200 hover:bg-red-100">Cancelled</Badge>}
                     {!b.checkedIn && !b.cancelledAt && <Badge className="text-[7px] bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100">Booked</Badge>}
                   </div>
                 </div>
-                <div className="text-[9px] text-muted-foreground space-y-0.5">
+                <div className="rounded-2xl border border-slate-200/70 bg-slate-50/75 p-3 text-[10px] text-muted-foreground space-y-1">
                   {b.session?.startsAt && (
                     <p className="flex items-center gap-1">
-                      <CalendarIcon className="h-2.5 w-2.5" />
+                      <CalendarIcon className="h-3 w-3" />
                       {new Date(b.session.startsAt).toLocaleDateString()} · {new Date(b.session.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(b.session.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   )}
                   {b.session?.teacher && (
                     <p className="flex items-center gap-1">
-                      <User className="h-2.5 w-2.5" />
+                      <User className="h-3 w-3" />
                       {b.session.teacher.firstName} {b.session.teacher.lastName}
                     </p>
                   )}
                   {b.session?.inPersonLocation && (
                     <p className="flex items-center gap-1">
-                      <MapPin className="h-2.5 w-2.5" />
+                      <MapPin className="h-3 w-3" />
                       {b.session.inPersonLocation.name}
                     </p>
                   )}
                 </div>
               </div>
             ))}
-            {bookings.length > 10 && <p className="text-[9px] text-muted-foreground text-center">Showing first 10 of {bookings.length} bookings</p>}
-            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1">
+            {bookings.length > 10 && <p className="text-[10px] text-muted-foreground text-center">Showing first 10 of {bookings.length} bookings</p>}
+            <button onClick={handleBackToOperations} className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors mt-1">
               ← Back to options
             </button>
           </motion.div>
@@ -1218,17 +1535,36 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
 
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5 space-y-2.5">
+            <div className="rounded-[24px] border border-white/70 bg-white/85 p-3.5 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Upcoming classes</p>
+                  <h3 className="text-sm font-semibold text-slate-950">This week’s class schedule</h3>
+                </div>
+                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[10px] font-semibold text-cyan-700">
+                  {sessions.length} sessions
+                </span>
+              </div>
+            </div>
             {Object.entries(grouped).slice(0, 5).map(([day, dayClasses]) => (
-              <div key={day}>
-                <p className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest mb-1">{day}</p>
+              <div key={day} className="rounded-[24px] border border-white/70 bg-white/85 p-3.5 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.22)] backdrop-blur-xl">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest">{day}</p>
+                  <span className="text-[10px] font-medium text-slate-500">{dayClasses.length} class{dayClasses.length !== 1 ? 'es' : ''}</span>
+                </div>
                 <div className="space-y-1.5">
                   {dayClasses.slice(0, 6).map((s: any) => (
-                    <div key={s.id} className="bg-card border border-border rounded-lg p-2.5 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-[11px] font-bold text-foreground">{s.name}</h4>
-                        <span className="text-[9px] text-muted-foreground">{s.bookingCount}/{s.capacity} booked</span>
+                    <div key={s.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/75 p-3 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600 shadow-sm">
+                            <CalendarList className="h-4 w-4" />
+                          </span>
+                          <h4 className="text-[12px] font-bold text-foreground">{s.name}</h4>
+                        </div>
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-medium text-muted-foreground">{s.bookingCount}/{s.capacity} booked</span>
                       </div>
-                      <div className="flex items-center gap-2 text-[9px] text-muted-foreground mt-0.5">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
                         <span>{new Date(s.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(s.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         {s.teacher && <span>• {s.teacher.firstName} {s.teacher.lastName}</span>}
                         {s.inPersonLocation && <span>• {s.inPersonLocation.name}</span>}
@@ -1238,7 +1574,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 </div>
               </div>
             ))}
-            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1">
+            <button onClick={handleBackToOperations} className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors mt-1">
               ← Back to options
             </button>
           </motion.div>
@@ -1299,17 +1635,28 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
             {/* Export toolbar */}
-            <div className="flex items-center gap-1.5 mb-2.5">
-              <span className="text-[10px] text-muted-foreground font-medium mr-auto">Download:</span>
-              <Button variant="outline" size="sm" onClick={() => exportCSV(rows)} className="h-7 px-2.5 text-[10px] rounded-lg gap-1">
+            <div className="mb-2.5 rounded-[24px] border border-white/70 bg-white/85 p-3.5 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Freeze history</p>
+                  <h3 className="text-sm font-semibold text-slate-950">Your all-time freeze record</h3>
+                </div>
+                <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[10px] font-semibold text-violet-700">
+                  {Object.keys(grouped).length} memberships
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-muted-foreground font-medium mr-auto">Download:</span>
+                <Button variant="outline" size="sm" onClick={() => exportCSV(rows)} className="h-8 px-3 text-[10px] rounded-xl gap-1 bg-white/80">
                 <FileDown className="h-3 w-3" /> CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={() => exportPDF(rows)} className="h-7 px-2.5 text-[10px] rounded-lg gap-1">
+                <Button variant="outline" size="sm" onClick={() => exportPDF(rows)} className="h-8 px-3 text-[10px] rounded-xl gap-1 bg-white/80">
                 <Download className="h-3 w-3" /> PDF
               </Button>
-              <Button variant="outline" size="sm" onClick={exportImage} className="h-7 px-2.5 text-[10px] rounded-lg gap-1">
+                <Button variant="outline" size="sm" onClick={exportImage} className="h-8 px-3 text-[10px] rounded-xl gap-1 bg-white/80">
                 <ImageDown className="h-3 w-3" /> Image
               </Button>
+              </div>
             </div>
 
             <div ref={historyRef} className="space-y-2.5">
@@ -1317,13 +1664,13 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 const totalIntervals = row.freezeUsage?.intervals?.length || 0;
                 return (
                   <div key={row.membershipId} className={cn(
-                    "bg-card border rounded-xl overflow-hidden shadow-sm",
+                    "overflow-hidden rounded-[24px] border shadow-[0_18px_45px_-30px_rgba(15,23,42,0.22)] backdrop-blur-xl",
                     row.isFrozen ? "border-blue-300/50 ring-1 ring-blue-200/30" : row.isExpired ? "border-gray-300/50 opacity-70" : "border-border"
                   )}>
                     {/* Header */}
                     <div className={cn(
                       "px-3.5 py-2.5 border-b flex items-center justify-between",
-                      row.isFrozen ? "bg-blue-50/60 border-blue-200/30" : row.isExpired ? "bg-gray-50/60 border-gray-200/30" : "bg-muted/30 border-border/30"
+                      row.isFrozen ? "bg-blue-50/80 border-blue-200/30" : row.isExpired ? "bg-gray-50/70 border-gray-200/30" : "bg-white/85 border-border/30"
                     )}>
                       <div>
                         <h4 className="text-[12px] font-bold text-foreground flex items-center gap-1.5">
@@ -1350,7 +1697,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                           <span>{new Date(row.startDate).toLocaleDateString()} → {new Date(row.endDate).toLocaleDateString()}</span>
                         </div>
                       </div>
-                      <div className="text-right space-y-0.5">
+                      <div className="text-right space-y-0.5 rounded-2xl border border-slate-200/60 bg-white/80 px-3 py-2 shadow-sm">
                         {row.freezePolicy ? (
                           <>
                             <div className="text-[9px] text-muted-foreground">
@@ -1432,7 +1779,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
               })}
             </div>
             <div className="mt-2.5">
-              <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+              <button onClick={handleBackToOperations} className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors">
                 ← Back to options
               </button>
             </div>
@@ -1447,64 +1794,88 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
 
   // ─── Render ───
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Chat Panel */}
-      <div className="flex flex-col w-full lg:w-[55%] h-full">
-        {/* Header — animated & styled */}
+    <div className="relative flex h-full w-full overflow-hidden rounded-[30px] border border-white/50 bg-background shadow-[0_24px_120px_-40px_rgba(15,23,42,0.45)]">
+      <div className="hidden lg:flex lg:w-2/5 relative overflow-hidden bg-gradient-to-br from-violet-100/60 via-white to-fuchsia-100/55">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(139,92,246,0.22),transparent_28%),radial-gradient(circle_at_85%_20%,rgba(217,70,239,0.14),transparent_22%),radial-gradient(circle_at_50%_82%,rgba(59,130,246,0.16),transparent_24%)]" />
+        <div className="absolute -left-12 top-16 h-56 w-56 rounded-full bg-violet-400/20 blur-3xl" />
+        <div className="absolute -right-12 bottom-10 h-64 w-64 rounded-full bg-fuchsia-400/20 blur-3xl" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(100,116,139,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(100,116,139,0.08)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_78%_56%_at_50%_50%,#000_68%,transparent_110%)]" />
+
+        <InteractiveRobotSpline scene={ROBOT_SPLINE_URL} className="absolute inset-0 h-full w-full" />
+
+        <div className="absolute left-8 top-8 z-10 max-w-xs rounded-[28px] border border-white/70 bg-white/72 p-5 shadow-[0_24px_80px_-30px_rgba(15,23,42,0.35)] backdrop-blur-2xl">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-violet-600/80">Interactive concierge</p>
+          <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Frostie</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Your Physique 57 membership expert for freezes, restarts, bookings, schedules, and polished support that feels on-brand.
+          </p>
+        </div>
+
+        <div className="absolute bottom-8 left-8 right-8 z-10 rounded-[28px] border border-white/70 bg-white/70 p-5 shadow-[0_24px_80px_-30px_rgba(15,23,42,0.35)] backdrop-blur-2xl">
+          <div className="flex flex-wrap gap-2">
+            {[
+              "Immediate freeze & unfreeze",
+              "Bookings & visits",
+              "Schedule answers",
+            ].map((item) => (
+              <span
+                key={item}
+                className="rounded-full border border-slate-200/80 bg-white/85 px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="relative z-10 flex h-full w-full flex-col bg-background lg:w-3/5">
         <motion.header
           initial={{ y: -60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: "spring", stiffness: 120, damping: 20 }}
-          className="gradient-primary px-4 py-3.5 flex items-center gap-3.5 shadow-xl shadow-primary/15 relative overflow-hidden"
+          className="relative flex items-center justify-between border-b border-border bg-[#f0f2f5] px-4 py-4 shadow-sm"
         >
-          {/* Subtle animated background shimmer */}
-          <motion.div
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent"
-            animate={{ x: ['-100%', '200%'] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-          />
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 border-primary/20 bg-gradient-to-br from-violet-100 to-fuchsia-100 shadow-sm">
+              <img src={frostieAvatar} alt={AGENT_NAME} className="h-10 w-10 rounded-full object-contain" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-lg font-semibold text-slate-950">{AGENT_NAME}</h1>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-emerald-700 shadow-sm">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Online
+                </span>
+              </div>
+              <p className="truncate text-xs text-slate-500">Physique 57 Expert</p>
+            </div>
+          </div>
 
-          {onComplete && (
-            <button onClick={handleGoHome} className="mr-0.5 p-1.5 rounded-full hover:bg-white/10 transition-colors relative z-10">
-              <ArrowLeft className="h-4 w-4 text-primary-foreground/70" />
-            </button>
-          )}
-          <div className="relative z-10">
-            <motion.div
-              className="w-12 h-12 rounded-full overflow-hidden bg-white p-0.5 shadow-lg shadow-black/20 flex-shrink-0 ring-2 ring-white/20"
-              animate={{ scale: [1, 1.03, 1] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <img src={frostieAvatar} alt={AGENT_NAME} className="w-full h-full object-contain rounded-full" />
-            </motion.div>
-            <motion.div
-              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-primary"
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-          </div>
-          <div className="flex-1 min-w-0 relative z-10">
-            <h1 className="text-[15px] font-bold text-primary-foreground tracking-tight font-display">{AGENT_NAME}</h1>
-            <p className="text-[10px] text-primary-foreground/50 font-medium truncate">Physique 57 India · Your Wellness Concierge ✨</p>
-          </div>
-          <div className="flex items-center gap-2.5 relative z-10">
+          <div className="flex items-center gap-3">
             <label className="flex items-center gap-1 cursor-pointer select-none">
-              <span className="text-[9px] text-primary-foreground/40 font-medium">Test</span>
+              <span className="text-[10px] text-slate-500 font-medium">Test</span>
               <Switch checked={testMode} onCheckedChange={setTestMode} className="scale-[0.6]" />
             </label>
+            {onComplete && (
+              <button
+                onClick={handleGoHome}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-900"
+                aria-label="Close chat"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            )}
           </div>
         </motion.header>
 
-        {/* Messages area — chat pattern background */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto chat-scrollbar px-4 py-4 space-y-3"
+          className="chat-scrollbar flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#efeae2]"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-            backgroundColor: 'hsl(var(--muted) / 0.3)',
+            backgroundColor: '#efeae2',
           }}
         >
-          {/* Today marker */}
           <div className="flex justify-center mb-2">
             <span className="text-[9px] font-medium text-muted-foreground bg-card/80 backdrop-blur-sm border border-border/40 rounded-full px-3 py-1 shadow-sm">
               Today
@@ -1542,20 +1913,28 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   transition={{ duration: 0.2, ease: "easeOut" }}
                   className={cn("flex flex-col", msg.role === 'user' ? "items-end" : "items-start")}
                 >
-                  <div className={cn("flex items-end gap-2 max-w-[85%]", msg.role === 'user' && "flex-row-reverse")}>
+                  <div className={cn("flex w-full items-end gap-2", msg.role === 'user' && "ml-auto flex-row-reverse justify-end")}>
                     {msg.role === 'bot' && (
                       <div className="w-6 h-6 rounded-full overflow-hidden bg-card border border-border/30 flex-shrink-0 p-0.5 mb-0.5">
                         <img src={frostieAvatar} alt={AGENT_NAME} className="w-full h-full object-contain rounded-full" />
                       </div>
                     )}
-                    <div className="flex flex-col gap-0.5">
+                    <div className={cn("flex flex-col gap-0.5", msg.role === 'user' ? "items-end flex-1 pl-12" : "max-w-[94%] pr-6") }>
                       <div className={cn(
-                        "rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed relative",
+                        "relative w-full rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed",
                         msg.role === 'user'
-                          ? "gradient-primary text-primary-foreground rounded-br-sm shadow-md shadow-primary/10"
-                          : "bg-card border border-border/40 rounded-bl-sm text-foreground shadow-sm"
+                          ? "rounded-br-sm border border-[#cdebb7] bg-[#dcf8c6] text-slate-900 shadow-sm"
+                          : "rounded-bl-sm border border-[#e6e6e6] bg-white text-slate-900 shadow-sm"
                       )}>
                         {msg.text.split('**').map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
+                        <span
+                          className={cn(
+                            "absolute bottom-0 h-3 w-3 rotate-45",
+                            msg.role === 'user'
+                              ? "-right-1.5 bg-[#dcf8c6] border-r border-b border-[#cdebb7]"
+                              : "-left-1.5 bg-white border-l border-b border-[#e6e6e6]"
+                          )}
+                        />
                       </div>
                       {msg.timestamp && (
                         <span className={cn(
@@ -1579,7 +1958,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
               <div className="w-7 h-7 rounded-full overflow-hidden bg-card border border-border/30 flex-shrink-0 p-0.5">
                 <img src={frostieAvatar} alt={AGENT_NAME} className="w-full h-full object-contain rounded-full" />
               </div>
-              <div className="bg-card border border-border/40 rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1 shadow-sm">
+              <div className="rounded-2xl rounded-bl-sm border border-[#e6e6e6] bg-white px-3.5 py-2.5 flex gap-1 shadow-sm">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0s' }} />
                 <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0.2s' }} />
                 <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0.4s' }} />
@@ -1588,35 +1967,8 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
           )}
         </div>
 
-        {/* Bottom bar — branding */}
-        <div className="px-4 py-2 border-t border-border/30 bg-card/50 backdrop-blur-sm flex items-center justify-center gap-1.5">
-          <Snowflake className="h-3 w-3 text-primary/30" />
-          <span className="text-[9px] text-muted-foreground/50 font-medium">Powered by {AGENT_NAME} · Physique 57 India</span>
-        </div>
-      </div>
-
-      {/* Right Panel — Desktop hero */}
-      <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden">
-        <img
-          src="https://i.postimg.cc/Bvc0Nwhn/hp-Img-1774432711.jpg"
-          alt="Physique 57 India Studio"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/5" />
-        <div className="absolute bottom-0 left-0 right-0 p-10">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.6 }}
-          >
-            <img src="/logo.png" alt="Physique 57 India" className="h-10 mb-4 brightness-0 invert opacity-80" loading="lazy" />
-            <h2 className="text-3xl font-bold text-white mb-2 tracking-tight leading-tight font-display">
-              Your Membership,<br />Your Control
-            </h2>
-            <p className="text-white/50 text-sm max-w-xs leading-relaxed">
-              Freeze, modify, or restart your membership in seconds with {AGENT_NAME}! ❄️
-            </p>
-          </motion.div>
+        <div className="border-t border-border/50 bg-[#f0f2f5] px-4 py-3">
+          {renderBottomComposer()}
         </div>
       </div>
 
