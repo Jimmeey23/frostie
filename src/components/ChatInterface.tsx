@@ -19,18 +19,20 @@ import {
   User, Mail, Phone, CalendarIcon, Snowflake, Loader2, CheckCircle2,
   AlertTriangle, Clock, ArrowRight, RotateCcw, Shield, MapPin, History,
   FileText, RefreshCw, ArrowLeft, Ban, XCircle, Send, Download,
-  FileDown, ImageDown, ChevronDown, Info
+  FileDown, ImageDown, ChevronDown, Info, Zap, BookOpen, MessageCircle,
+  Play, Calendar as CalendarList
 } from "lucide-react";
-import { sendOtp, memberLookup, freezeMembership, unfreezeMembership, restartMembership, sendConfirmation, freezeHistory } from "@/lib/momenceApi";
+import { sendOtp, memberLookup, freezeMembership, unfreezeMembership, restartMembership, sendConfirmation, freezeHistory, memberBookings, sessionsList } from "@/lib/momenceApi";
+import { findFaqAnswer } from "@/lib/faqKnowledge";
 import frostieAvatar from "@/assets/frostie-avatar.png";
 
 type Step =
   | 'welcome' | 'ask-name' | 'ask-email' | 'ask-phone'
   | 'otp' | 'operation' | 'memberships'
-  | 'freeze-reason' | 'freeze-dates' | 'modify-unfreeze'
-  | 'confirm' | 'processing' | 'success' | 'history';
+  | 'freeze-reason' | 'freeze-dates' | 'freeze-mode' | 'modify-unfreeze' | 'unfreeze-mode'
+  | 'confirm' | 'processing' | 'success' | 'history' | 'chat';
 
-type Operation = 'freeze' | 'modify' | 'restart' | 'history';
+type Operation = 'freeze' | 'modify' | 'restart' | 'history' | 'bookings' | 'schedule' | 'ask';
 
 interface ChatMsg {
   id: string;
@@ -61,6 +63,7 @@ interface FreezeHistoryRow {
   startDate: string;
   endDate: string;
   isFrozen: boolean;
+  isExpired?: boolean;
   scheduledFreezeAt: string | null;
   scheduledUnfreezeAt: string | null;
   freezePolicy: { name: string; attempts: number; days: number } | null;
@@ -155,6 +158,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
   const [nameInput, setNameInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
+  const [chatInput, setChatInput] = useState('');
 
   const [otpCode, setOtpCode] = useState('');
   const [serverOtp, setServerOtp] = useState('');
@@ -189,7 +193,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
   useEffect(() => { scrollToBottom(); }, [messages, step, scrollToBottom]);
 
   useEffect(() => {
-    addBotDelayed(`Hey there! 👋 I'm **${AGENT_NAME}**, your friendly freeze assistant at Physique 57 India!`, 400, () => {
+    addBotDelayed(`Hey there! 👋 I'm **${AGENT_NAME}**, your friendly wellness assistant at Physique 57 India! I'm here to help with freezes, bookings, schedules, and anything P57-related.`, 400, () => {
       addBotDelayed("Let's get started! What's your **full name** (first & last)?", 800, undefined, 'ask-name-input');
       setStep('ask-name');
     });
@@ -233,7 +237,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
     setLastName(parts.slice(1).join(' '));
     addUser(trimmed);
     setNameInput('');
-    addBotDelayed(`Nice to meet you, **${parts[0]}**! 😊 Now, what's your **email address**?`, 600, undefined, 'ask-email-input');
+    addBotDelayed(`Lovely to meet you, **${parts[0]}**! 😊 Now, what's your **email address**?`, 600, undefined, 'ask-email-input');
     setStep('ask-email');
   };
 
@@ -243,7 +247,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
     setEmail(trimmed);
     addUser(trimmed);
     setEmailInput('');
-    addBotDelayed("Great! And lastly, your **phone number** (with country code)?", 600, undefined, 'ask-phone-input');
+    addBotDelayed("Perfect! And lastly, your **phone number** (with country code)?", 600, undefined, 'ask-phone-input');
     setStep('ask-phone');
   };
 
@@ -271,7 +275,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
             setMemberName(`${result.member.firstName} ${result.member.lastName}`);
             setMemberEmail(result.member.email);
             setMemberships(result.memberships || []);
-            addBot(`Welcome back, **${result.member.firstName}**! 🎉 I found ${result.memberships?.length || 0} active membership(s). What would you like to do today?`, 'operations');
+            addBot(`Welcome back, **${result.member.firstName}**! 🎉 I found ${result.memberships?.length || 0} active membership(s). How can I help you today?`, 'operations');
             setStep('operation');
           } catch (e: any) {
             addBot(`❌ ${e.message}. Let's try again!`, 'ask-name-input');
@@ -309,7 +313,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
         setMemberName(`${result.member.firstName} ${result.member.lastName}`);
         setMemberEmail(result.member.email);
         setMemberships(result.memberships || []);
-        addBot(`Welcome back, **${result.member.firstName}**! 🎉 I found ${result.memberships?.length || 0} active membership(s). What would you like to do?`, 'operations');
+        addBot(`Welcome back, **${result.member.firstName}**! 🎉 I found ${result.memberships?.length || 0} active membership(s). How can I help you today?`, 'operations');
         setStep('operation');
       } catch (e: any) { addBot(`❌ ${e.message}`); }
       finally { setIsLoading(false); }
@@ -321,15 +325,55 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
     const labels: Record<Operation, string> = {
       freeze: '❄️ Freeze Membership', modify: '🔧 Modify Frozen Membership',
       restart: '🔄 Restart Membership', history: '📋 View Freeze History',
+      bookings: '📖 My Bookings & Visits', schedule: '🗓️ Class Schedule',
+      ask: '💬 Ask a Question',
     };
     addUser(labels[op]);
+
+    if (op === 'ask') {
+      addBotDelayed("Sure! Ask me anything about Physique 57 — classes, memberships, schedules, the method, or anything else! I'm all ears 👂✨", 600, undefined, 'chat-input');
+      setStep('chat');
+      return;
+    }
+
+    if (op === 'bookings') {
+      setIsLoading(true);
+      try {
+        const result = await memberBookings(memberId);
+        const bookings = result.payload || [];
+        if (bookings.length === 0) {
+          addBotDelayed("Looks like you don't have any bookings yet! Ready to book your first class? 🎯", 600, undefined, 'operations');
+        } else {
+          addBotDelayed(`Here are your recent bookings (${bookings.length} found):`, 600, undefined, 'bookings-list', bookings);
+        }
+      } catch (e: any) { addBot(`❌ ${e.message}`); }
+      finally { setIsLoading(false); }
+      return;
+    }
+
+    if (op === 'schedule') {
+      setIsLoading(true);
+      try {
+        const now = new Date();
+        const weekAhead = addDays(now, 7);
+        const result = await sessionsList({ startDate: now.toISOString(), endDate: weekAhead.toISOString() });
+        const sessions = result.payload || [];
+        if (sessions.length === 0) {
+          addBotDelayed("No upcoming classes found this week. Check back later! 🗓️", 600, undefined, 'operations');
+        } else {
+          addBotDelayed(`Here are the upcoming classes this week (${sessions.length} sessions):`, 600, undefined, 'schedule-list', sessions);
+        }
+      } catch (e: any) { addBot(`❌ ${e.message}`); }
+      finally { setIsLoading(false); }
+      return;
+    }
 
     if (op === 'history') {
       setIsLoading(true);
       try {
         const result = await freezeHistory(email);
         setHistoryRows(result.rows || []);
-        addBotDelayed("Here's your complete freeze history across all memberships 📊", 600, undefined, 'history-table', result.rows);
+        addBotDelayed("Here's your complete freeze history across **all** memberships (including expired ones) 📊", 600, undefined, 'history-table', result.rows);
         setStep('history');
       } catch (e: any) { addBot(`❌ ${e.message}`); }
       finally { setIsLoading(false); }
@@ -347,6 +391,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       return;
     }
 
+    // modify or restart
     const filtered = memberships.filter(m => m.isFrozen || m.actions.canRemoveScheduledFreeze);
     if (filtered.length === 0) {
       addBotDelayed("Hmm, no frozen memberships found! 🤔 Would you like to try something else?", 600, undefined, 'operations');
@@ -364,8 +409,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       addBotDelayed("Before we freeze — mind telling me why? (Totally optional but helps us personalise! 😄)", 600, undefined, 'freeze-reason');
       setStep('freeze-reason');
     } else if (operation === 'modify') {
-      addBotDelayed("When would you like this membership to unfreeze? (Max 30 days from freeze start)", 600, undefined, 'modify-unfreeze');
-      setStep('modify-unfreeze');
+      // For modify, offer both schedule-unfreeze and unfreeze-now
+      addBotDelayed("How would you like to unfreeze this membership?", 600, undefined, 'unfreeze-mode');
+      setStep('unfreeze-mode');
     } else if (operation === 'restart') {
       setConfirmDetails({
         title: 'Restart Membership',
@@ -387,16 +433,82 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
     setFreezeReason(reasonId);
     addUser(`${reason?.emoji} ${reason?.label}`);
     if (!selectedMembership) return;
-    addBotDelayed(`Got it! Choose your freeze window below. You have **${selectedMembership.freezeEligibility.daysRemaining} day(s)** remaining (max 30 per freeze). ❄️`, 600, undefined, 'freeze-dates');
-    setStep('freeze-dates');
+    // Offer freeze mode choice
+    addBotDelayed("Would you like to freeze **right now** or **schedule it** for specific dates?", 600, undefined, 'freeze-mode');
+    setStep('freeze-mode');
   };
 
   const handleSkipReason = () => {
     setFreezeReason('');
     addUser("Skip — no reason");
     if (!selectedMembership) return;
-    addBotDelayed(`No problem! You have **${selectedMembership.freezeEligibility.daysRemaining} day(s)** remaining. Pick your dates below: 📅`, 600, undefined, 'freeze-dates');
+    addBotDelayed("Would you like to freeze **right now** or **schedule it** for specific dates?", 600, undefined, 'freeze-mode');
+    setStep('freeze-mode');
+  };
+
+  const handleFreezeNow = () => {
+    if (!selectedMembership) return;
+    addUser("⚡ Freeze Now");
+    setConfirmDetails({
+      title: 'Freeze Immediately',
+      lines: [
+        `Membership: ${selectedMembership.membership.name}`,
+        'This will freeze your membership right now.',
+        'You can unfreeze it later from this portal.',
+      ],
+    });
+    setConfirmAction(() => async () => {
+      await freezeMembership({
+        memberId, boughtMembershipId: selectedMembership.id,
+        startDate: new Date().toISOString(), endDate: '',
+        operation: 'freeze-now', memberName, memberEmail,
+      });
+      try {
+        await sendConfirmation({
+          to: memberEmail, memberName, membershipName: selectedMembership.membership.name,
+          action: 'freeze', freezeStart: new Date().toISOString(),
+        });
+      } catch (e) { console.error('Confirmation email failed:', e); }
+    });
+    setShowConfirm(true);
+  };
+
+  const handleScheduleFreeze = () => {
+    if (!selectedMembership) return;
+    addUser("📅 Schedule Freeze");
+    addBotDelayed(`Choose your freeze window below. You have **${selectedMembership.freezeEligibility.daysRemaining} day(s)** remaining (max 30 per freeze). ❄️`, 600, undefined, 'freeze-dates');
     setStep('freeze-dates');
+  };
+
+  const handleUnfreezeNow = () => {
+    if (!selectedMembership) return;
+    addUser("⚡ Unfreeze Now");
+    setConfirmDetails({
+      title: 'Unfreeze Immediately',
+      lines: [
+        `Membership: ${selectedMembership.membership.name}`,
+        'This will unfreeze your membership right now and resume it immediately.',
+      ],
+    });
+    setConfirmAction(() => async () => {
+      await unfreezeMembership({
+        memberId, boughtMembershipId: selectedMembership.id,
+        operation: 'unfreeze-now', memberName, memberEmail,
+      });
+      try {
+        await sendConfirmation({
+          to: memberEmail, memberName, membershipName: selectedMembership.membership.name,
+          action: 'unfreeze',
+        });
+      } catch (e) { console.error('Confirmation email failed:', e); }
+    });
+    setShowConfirm(true);
+  };
+
+  const handleScheduleUnfreeze = () => {
+    addUser("📅 Schedule Unfreeze");
+    addBotDelayed("When would you like this membership to unfreeze? (Max 30 days from now)", 600, undefined, 'modify-unfreeze');
+    setStep('modify-unfreeze');
   };
 
   const handleFreezeSubmit = () => {
@@ -497,19 +609,38 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
 
   const handleGoHome = () => { onComplete?.(); };
 
+  // ─── Chat / FAQ handler ───
+  const handleChatSubmit = async () => {
+    const q = chatInput.trim();
+    if (!q) return;
+    addUser(q);
+    setChatInput('');
+
+    // Try FAQ first
+    const faqAnswer = findFaqAnswer(q);
+    if (faqAnswer) {
+      addBotDelayed(faqAnswer, 600, undefined, 'chat-input');
+      return;
+    }
+
+    // Default helpful response
+    addBotDelayed("That's a great question! 🤔 I'm not 100% sure about that one — but our team would love to help! You can reach us on WhatsApp or at the studio. Is there anything else I can help with?", 700, undefined, 'chat-input');
+  };
+
   // ─── Export handlers ───
 
   const exportCSV = (rows: FreezeHistoryRow[]) => {
-    const headers = ['Membership', 'Location', 'Membership Start', 'Membership End', 'Freeze #', 'Freeze Start', 'Freeze End', 'Duration (days)', 'Status', 'Policy', 'Attempts Used', 'Attempts Left', 'Days Used', 'Days Left'];
+    const headers = ['Membership', 'Status', 'Location', 'Membership Start', 'Membership End', 'Freeze #', 'Freeze Start', 'Freeze End', 'Duration (days)', 'Status', 'Policy', 'Attempts Used', 'Attempts Left', 'Days Used', 'Days Left'];
     const csvRows = [headers.join(',')];
     rows.forEach(row => {
+      const membershipStatus = row.isExpired ? 'Expired' : (row.isFrozen ? 'Frozen' : 'Active');
       if (row.freezeUsage?.intervals?.length > 0) {
         row.freezeUsage.intervals.forEach((interval: any, idx: number) => {
           const start = new Date(interval.freezeAt);
           const end = interval.unfreezeAt ? new Date(interval.unfreezeAt) : null;
           const days = end ? differenceInDays(end, start) + 1 : differenceInDays(new Date(), start) + 1;
           csvRows.push([
-            `"${row.membershipName}"`, `"${row.location}"`,
+            `"${row.membershipName}"`, membershipStatus, `"${row.location}"`,
             new Date(row.startDate).toLocaleDateString(), new Date(row.endDate).toLocaleDateString(),
             idx + 1, start.toLocaleDateString(), end ? end.toLocaleDateString() : 'Ongoing',
             days, interval.unfreezeAt ? 'Completed' : 'Active',
@@ -520,7 +651,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
         });
       } else {
         csvRows.push([
-          `"${row.membershipName}"`, `"${row.location}"`,
+          `"${row.membershipName}"`, membershipStatus, `"${row.location}"`,
           new Date(row.startDate).toLocaleDateString(), new Date(row.endDate).toLocaleDateString(),
           '-', '-', '-', '-', 'No History',
           row.freezePolicy?.name || 'None', 0, row.freezeEligibility?.attemptsRemaining ?? '-',
@@ -548,11 +679,12 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       if (y > 180) { doc.addPage(); y = 20; }
       doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.text(`${row.membershipName} — ${row.location}`, 14, y);
+      const statusTag = row.isExpired ? ' [EXPIRED]' : (row.isFrozen ? ' [FROZEN]' : '');
+      doc.text(`${row.membershipName}${statusTag} — ${row.location}`, 14, y);
       y += 6;
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Period: ${new Date(row.startDate).toLocaleDateString()} → ${new Date(row.endDate).toLocaleDateString()} | Status: ${row.isFrozen ? 'CURRENTLY FROZEN' : 'Active'}`, 14, y);
+      doc.text(`Period: ${new Date(row.startDate).toLocaleDateString()} → ${new Date(row.endDate).toLocaleDateString()}`, 14, y);
       y += 5;
       if (row.freezePolicy) {
         doc.text(`Policy: ${row.freezePolicy.name} | Attempts: ${row.freezeUsage.attemptsUsed}/${row.freezePolicy.attempts} used | Days: ${row.freezeUsage.frozenDaysUsed}/${row.freezePolicy.days} used`, 14, y);
@@ -560,7 +692,6 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       }
 
       if (row.freezeUsage?.intervals?.length > 0) {
-        // Table header
         doc.setFont('helvetica', 'bold');
         doc.text('#', 16, y); doc.text('Freeze Start', 26, y); doc.text('Freeze End', 66, y);
         doc.text('Duration', 106, y); doc.text('Status', 130, y);
@@ -609,7 +740,6 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
   const resumeDateCalc = freezeEndDate ? addDays(freezeEndDate, 1) : null;
   const unfreezeResume = unfreezeDate ? addDays(unfreezeDate, 1) : null;
 
-  // ─── Build disclaimer text for success ───
   const getDisclaimer = () => {
     if (!selectedMembership) return null;
     const policy = selectedMembership.freezePolicy;
@@ -719,9 +849,11 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
             <div className="grid grid-cols-2 gap-2">
               {[
                 { op: 'freeze' as Operation, icon: Snowflake, label: 'Freeze', desc: 'Pause membership', color: 'from-blue-500/10 to-blue-600/5 border-blue-200/60 hover:border-blue-300' },
-                { op: 'modify' as Operation, icon: Clock, label: 'Modify Freeze', desc: 'Change dates', color: 'from-amber-500/10 to-amber-600/5 border-amber-200/60 hover:border-amber-300' },
+                { op: 'modify' as Operation, icon: Clock, label: 'Modify / Unfreeze', desc: 'Change or end freeze', color: 'from-amber-500/10 to-amber-600/5 border-amber-200/60 hover:border-amber-300' },
                 { op: 'restart' as Operation, icon: RotateCcw, label: 'Restart', desc: 'Resume now', color: 'from-emerald-500/10 to-emerald-600/5 border-emerald-200/60 hover:border-emerald-300' },
-                { op: 'history' as Operation, icon: FileText, label: 'History', desc: 'View past freezes', color: 'from-purple-500/10 to-purple-600/5 border-purple-200/60 hover:border-purple-300' },
+                { op: 'history' as Operation, icon: FileText, label: 'History', desc: 'All-time freezes', color: 'from-purple-500/10 to-purple-600/5 border-purple-200/60 hover:border-purple-300' },
+                { op: 'bookings' as Operation, icon: BookOpen, label: 'My Bookings', desc: 'Visits & classes', color: 'from-rose-500/10 to-rose-600/5 border-rose-200/60 hover:border-rose-300' },
+                { op: 'schedule' as Operation, icon: CalendarList, label: 'Schedule', desc: 'Upcoming classes', color: 'from-cyan-500/10 to-cyan-600/5 border-cyan-200/60 hover:border-cyan-300' },
               ].map(({ op, icon: Icon, label, desc, color }) => (
                 <motion.button
                   key={op}
@@ -739,6 +871,19 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 </motion.button>
               ))}
             </div>
+            {/* Ask a question - full width */}
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => handleOperation('ask')}
+              className="w-full mt-2 flex items-center gap-2 p-3 rounded-xl border bg-gradient-to-br from-indigo-500/10 to-indigo-600/5 border-indigo-200/60 hover:border-indigo-300 transition-all cursor-pointer text-left"
+            >
+              <MessageCircle className="h-4 w-4 text-foreground/70" />
+              <div>
+                <span className="text-[13px] font-semibold text-foreground">Ask Frostie</span>
+                <span className="text-[10px] text-muted-foreground ml-2">Classes, pricing, method & more</span>
+              </div>
+            </motion.button>
           </motion.div>
         );
 
@@ -848,6 +993,68 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
           </motion.div>
         );
 
+      case 'freeze-mode':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleFreezeNow}
+                className="flex flex-col items-center gap-1.5 p-4 rounded-xl border bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-200/60 hover:border-blue-400 transition-all"
+              >
+                <Zap className="h-5 w-5 text-blue-500" />
+                <span className="text-[13px] font-bold text-foreground">Freeze Now</span>
+                <span className="text-[9px] text-muted-foreground">Immediate effect</span>
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleScheduleFreeze}
+                className="flex flex-col items-center gap-1.5 p-4 rounded-xl border bg-gradient-to-br from-indigo-500/10 to-indigo-600/5 border-indigo-200/60 hover:border-indigo-400 transition-all"
+              >
+                <CalendarIcon className="h-5 w-5 text-indigo-500" />
+                <span className="text-[13px] font-bold text-foreground">Schedule</span>
+                <span className="text-[9px] text-muted-foreground">Pick start & end dates</span>
+              </motion.button>
+            </div>
+            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2">
+              ← Back to options
+            </button>
+          </motion.div>
+        );
+
+      case 'unfreeze-mode':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleUnfreezeNow}
+                className="flex flex-col items-center gap-1.5 p-4 rounded-xl border bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-200/60 hover:border-emerald-400 transition-all"
+              >
+                <Zap className="h-5 w-5 text-emerald-500" />
+                <span className="text-[13px] font-bold text-foreground">Unfreeze Now</span>
+                <span className="text-[9px] text-muted-foreground">Resume immediately</span>
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleScheduleUnfreeze}
+                className="flex flex-col items-center gap-1.5 p-4 rounded-xl border bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-200/60 hover:border-amber-400 transition-all"
+              >
+                <CalendarIcon className="h-5 w-5 text-amber-500" />
+                <span className="text-[13px] font-bold text-foreground">Schedule</span>
+                <span className="text-[9px] text-muted-foreground">Pick a date</span>
+              </motion.button>
+            </div>
+            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-2">
+              ← Back to options
+            </button>
+          </motion.div>
+        );
+
       case 'freeze-dates':
         return selectedMembership ? (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
@@ -933,6 +1140,111 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
           </motion.div>
         ) : null;
 
+      case 'chat-input':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="flex gap-2 items-center">
+              <Input
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleChatSubmit()}
+                placeholder="Ask me anything about P57..."
+                className="h-10 text-sm bg-background border-border rounded-full px-4 focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                autoFocus
+              />
+              <Button onClick={handleChatSubmit} disabled={!chatInput.trim()} size="icon" className="h-10 w-10 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1.5 ml-1">
+              ← Back to menu
+            </button>
+          </motion.div>
+        );
+
+      case 'bookings-list': {
+        const bookings = (msg.widgetData || []) as any[];
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5 space-y-2">
+            {bookings.slice(0, 10).map((b: any) => (
+              <div key={b.id} className={cn("bg-card border rounded-xl p-3 shadow-sm", b.cancelledAt ? "border-red-200/50 opacity-60" : "border-border")}>
+                <div className="flex items-start justify-between mb-1">
+                  <h4 className="text-[12px] font-bold text-foreground">{b.session?.name || 'Class'}</h4>
+                  <div className="flex gap-1">
+                    {b.checkedIn && <Badge className="text-[7px] bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100">✓ Attended</Badge>}
+                    {b.cancelledAt && <Badge className="text-[7px] bg-red-100 text-red-600 border-red-200 hover:bg-red-100">Cancelled</Badge>}
+                    {!b.checkedIn && !b.cancelledAt && <Badge className="text-[7px] bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100">Booked</Badge>}
+                  </div>
+                </div>
+                <div className="text-[9px] text-muted-foreground space-y-0.5">
+                  {b.session?.startsAt && (
+                    <p className="flex items-center gap-1">
+                      <CalendarIcon className="h-2.5 w-2.5" />
+                      {new Date(b.session.startsAt).toLocaleDateString()} · {new Date(b.session.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(b.session.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                  {b.session?.teacher && (
+                    <p className="flex items-center gap-1">
+                      <User className="h-2.5 w-2.5" />
+                      {b.session.teacher.firstName} {b.session.teacher.lastName}
+                    </p>
+                  )}
+                  {b.session?.inPersonLocation && (
+                    <p className="flex items-center gap-1">
+                      <MapPin className="h-2.5 w-2.5" />
+                      {b.session.inPersonLocation.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {bookings.length > 10 && <p className="text-[9px] text-muted-foreground text-center">Showing first 10 of {bookings.length} bookings</p>}
+            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1">
+              ← Back to options
+            </button>
+          </motion.div>
+        );
+      }
+
+      case 'schedule-list': {
+        const sessions = (msg.widgetData || []) as any[];
+        // Group by day
+        const grouped: Record<string, any[]> = {};
+        sessions.forEach((s: any) => {
+          const day = new Date(s.startsAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+          if (!grouped[day]) grouped[day] = [];
+          grouped[day].push(s);
+        });
+
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5 space-y-2.5">
+            {Object.entries(grouped).slice(0, 5).map(([day, dayClasses]) => (
+              <div key={day}>
+                <p className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest mb-1">{day}</p>
+                <div className="space-y-1.5">
+                  {dayClasses.slice(0, 6).map((s: any) => (
+                    <div key={s.id} className="bg-card border border-border rounded-lg p-2.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-[11px] font-bold text-foreground">{s.name}</h4>
+                        <span className="text-[9px] text-muted-foreground">{s.bookingCount}/{s.capacity} booked</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[9px] text-muted-foreground mt-0.5">
+                        <span>{new Date(s.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(s.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {s.teacher && <span>• {s.teacher.firstName} {s.teacher.lastName}</span>}
+                        {s.inPersonLocation && <span>• {s.inPersonLocation.name}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1">
+              ← Back to options
+            </button>
+          </motion.div>
+        );
+      }
+
       case 'success': {
         const disclaimer = getDisclaimer();
         return (
@@ -1004,12 +1316,23 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
               {Object.values(grouped).map(row => {
                 const totalIntervals = row.freezeUsage?.intervals?.length || 0;
                 return (
-                  <div key={row.membershipId} className={cn("bg-card border rounded-xl overflow-hidden shadow-sm", row.isFrozen ? "border-blue-300/50 ring-1 ring-blue-200/30" : "border-border")}>
+                  <div key={row.membershipId} className={cn(
+                    "bg-card border rounded-xl overflow-hidden shadow-sm",
+                    row.isFrozen ? "border-blue-300/50 ring-1 ring-blue-200/30" : row.isExpired ? "border-gray-300/50 opacity-70" : "border-border"
+                  )}>
                     {/* Header */}
-                    <div className={cn("px-3.5 py-2.5 border-b flex items-center justify-between", row.isFrozen ? "bg-blue-50/60 border-blue-200/30" : "bg-muted/30 border-border/30")}>
+                    <div className={cn(
+                      "px-3.5 py-2.5 border-b flex items-center justify-between",
+                      row.isFrozen ? "bg-blue-50/60 border-blue-200/30" : row.isExpired ? "bg-gray-50/60 border-gray-200/30" : "bg-muted/30 border-border/30"
+                    )}>
                       <div>
                         <h4 className="text-[12px] font-bold text-foreground flex items-center gap-1.5">
                           {row.membershipName}
+                          {row.isExpired && (
+                            <Badge className="text-[7px] font-semibold bg-gray-200 text-gray-600 border-gray-300 hover:bg-gray-200 px-1.5 py-0">
+                              EXPIRED
+                            </Badge>
+                          )}
                           {row.isFrozen && (
                             <Badge className="text-[7px] font-bold bg-blue-500 text-white border-0 hover:bg-blue-500 animate-pulse px-1.5 py-0">
                               ❄️ FROZEN
@@ -1056,7 +1379,6 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                               <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Freeze Start</TableHead>
                               <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Freeze End</TableHead>
                               <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Days</TableHead>
-                              <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Requested</TableHead>
                               <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Status</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -1066,7 +1388,6 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                               const end = interval.unfreezeAt ? new Date(interval.unfreezeAt) : null;
                               const days = end ? differenceInDays(end, start) + 1 : differenceInDays(new Date(), start) + 1;
                               const isOngoing = !interval.unfreezeAt;
-                              const requested = interval.createdAt ? new Date(interval.createdAt).toLocaleDateString() : '—';
 
                               return (
                                 <TableRow key={idx} className={cn("border-b border-border/10", isOngoing && "bg-blue-50/20")}>
@@ -1074,7 +1395,6 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                                   <TableCell className="text-[10px] py-1.5 px-3 font-medium">{start.toLocaleDateString()}</TableCell>
                                   <TableCell className="text-[10px] py-1.5 px-3">{end ? end.toLocaleDateString() : '—'}</TableCell>
                                   <TableCell className="text-[10px] py-1.5 px-3 font-semibold">{days}d</TableCell>
-                                  <TableCell className="text-[10px] py-1.5 px-3 text-muted-foreground">{requested}</TableCell>
                                   <TableCell className="py-1.5 px-3">
                                     {isOngoing ? (
                                       <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[7px] font-bold">
@@ -1130,30 +1450,50 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Chat Panel */}
       <div className="flex flex-col w-full lg:w-[55%] h-full">
-        {/* Header — messenger style */}
-        <header className="gradient-primary px-4 py-3 flex items-center gap-3 shadow-lg shadow-primary/10 relative">
+        {/* Header — animated & styled */}
+        <motion.header
+          initial={{ y: -60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 120, damping: 20 }}
+          className="gradient-primary px-4 py-3.5 flex items-center gap-3.5 shadow-xl shadow-primary/15 relative overflow-hidden"
+        >
+          {/* Subtle animated background shimmer */}
+          <motion.div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent"
+            animate={{ x: ['-100%', '200%'] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+          />
+
           {onComplete && (
-            <button onClick={handleGoHome} className="mr-0.5 p-1 rounded-full hover:bg-white/10 transition-colors">
+            <button onClick={handleGoHome} className="mr-0.5 p-1.5 rounded-full hover:bg-white/10 transition-colors relative z-10">
               <ArrowLeft className="h-4 w-4 text-primary-foreground/70" />
             </button>
           )}
-          <div className="relative">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-white p-0.5 shadow-md flex-shrink-0">
+          <div className="relative z-10">
+            <motion.div
+              className="w-12 h-12 rounded-full overflow-hidden bg-white p-0.5 shadow-lg shadow-black/20 flex-shrink-0 ring-2 ring-white/20"
+              animate={{ scale: [1, 1.03, 1] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+            >
               <img src={frostieAvatar} alt={AGENT_NAME} className="w-full h-full object-contain rounded-full" />
-            </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-primary" />
+            </motion.div>
+            <motion.div
+              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-primary"
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
           </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-sm font-bold text-primary-foreground tracking-tight font-display">{AGENT_NAME}</h1>
-            <p className="text-[10px] text-primary-foreground/50 font-medium truncate">Physique 57 India · Freeze Assistant</p>
+          <div className="flex-1 min-w-0 relative z-10">
+            <h1 className="text-[15px] font-bold text-primary-foreground tracking-tight font-display">{AGENT_NAME}</h1>
+            <p className="text-[10px] text-primary-foreground/50 font-medium truncate">Physique 57 India · Your Wellness Concierge ✨</p>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 relative z-10">
             <label className="flex items-center gap-1 cursor-pointer select-none">
               <span className="text-[9px] text-primary-foreground/40 font-medium">Test</span>
               <Switch checked={testMode} onCheckedChange={setTestMode} className="scale-[0.6]" />
             </label>
           </div>
-        </header>
+        </motion.header>
 
         {/* Messages area — chat pattern background */}
         <div
