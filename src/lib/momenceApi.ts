@@ -41,3 +41,12 @@ export const sendConfirmation = (params: {
   resumeDate?: string;
   unfreezeDate?: string;
 }) => call('send-confirmation', params);
+
+export const memberBookings = (memberId: number, page = 0, pageSize = 50) =>
+  call('momence-api', { action: 'member-bookings', memberId, page, pageSize });
+
+export const sessionsList = (params?: { page?: number; pageSize?: number; startDate?: string; endDate?: string }) =>
+  call('momence-api', { action: 'sessions-list', ...params });
+
+export const sessionDetail = (sessionId: number) =>
+  call('momence-api', { action: 'session-detail', sessionId });
