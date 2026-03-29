@@ -62,7 +62,6 @@ async function getAccessToken(): Promise<string> {
   cachedRefreshToken = d.refresh_token || cachedRefreshToken;
   tokenExpiresAt = Date.now() + (d.expires_in || 3600) * 1000;
 
-  // Refresh for fresh tokens
   if (cachedRefreshToken) {
     try {
       const r2 = await fetch(`${MOMENCE_API_BASE}/auth/token`, {
@@ -125,7 +124,6 @@ async function ensureHeaderRow(accessToken: string) {
     const data = await res.json();
     const firstRow = data.values?.[0];
     if (!firstRow || firstRow.length === 0 || firstRow[0] !== HEADER_ROW[0]) {
-      // Insert header row at row 1
       await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}!A1:R1?valueInputOption=USER_ENTERED`,
         { method: 'PUT', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [HEADER_ROW] }) }
@@ -224,7 +222,6 @@ function serialize(m: any, usage: any) {
   const maxWindow = Math.min(elig.daysRemaining, MAX_FREEZE_DAYS);
   const schedFreeze = m.freeze?.scheduledFreezeAt || m.freeze?.freezeAt || null;
   const schedUnfreeze = m.freeze?.unfreezedScheduledAt || m.freeze?.scheduledUnfreezeAt || null;
-
   const location = m.location?.name || m.membership?.location?.name || m.hostLocation?.name || 'Mumbai';
 
   return {
@@ -300,7 +297,11 @@ serve(async (req) => {
 
       let reqDays: number | null = null;
       if (freezeAt && unfreezeAt) reqDays = Math.ceil((Date.parse(unfreezeAt) - Date.parse(freezeAt)) / MS_PER_DAY) + 1;
-      const elig = evaluate(selected, view.freezePolicy, usage, reqDays);
+      
+      // For freeze-now, skip day-based eligibility check but still check attempts
+      const elig = operation === 'freeze-now' 
+        ? evaluate(selected, view.freezePolicy, usage, null)
+        : evaluate(selected, view.freezePolicy, usage, reqDays);
       if (!elig.eligible) return respond({ error: elig.reason, eligibility: elig }, 400);
 
       const apiResult = await momenceRequest(reqPath, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(reqBody) });
@@ -308,19 +309,19 @@ serve(async (req) => {
       const resumeAt = unfreezeAt ? new Date(Date.parse(unfreezeAt) + MS_PER_DAY).toISOString() : '';
 
       await appendToSheet(buildLogRow({
-        status: 'SUCCESS', action: 'Freeze membership', memberId: String(memberId),
+        status: 'SUCCESS', action: operation === 'freeze-now' ? 'Freeze now' : 'Freeze membership', memberId: String(memberId),
         memberName: memberName || '', memberEmail: memberEmail || '',
         boughtMembershipId: String(boughtMembershipId), membershipName: view.membership.name || '',
         location: view.location, startDate: view.startDate, endDate: view.endDate,
         freezeHistory: (usage.intervals || []).map((i: any) => `${i.freezeAt?.slice(0,10)} → ${i.unfreezeAt?.slice(0,10) || 'ongoing'}`).join(' | '),
         freezeEligibility: elig.reason, freezeAt, unfreezeAt, resumeAt,
-        requestedDays: reqDays !== null ? String(reqDays) : '', note: 'Scheduled freeze.',
+        requestedDays: reqDays !== null ? String(reqDays) : '', note: operation === 'freeze-now' ? 'Frozen immediately.' : 'Scheduled freeze.',
       }));
 
-      return respond({ ok: true, operation, message: 'Freeze applied.', freezeAt, unfreezeAt, resumeAt, requestedDays: reqDays, eligibility: elig, apiResponse: apiResult });
+      return respond({ ok: true, operation, message: operation === 'freeze-now' ? 'Membership frozen immediately.' : 'Freeze applied.', freezeAt, unfreezeAt, resumeAt, requestedDays: reqDays, eligibility: elig, apiResponse: apiResult });
     }
 
-    // ── SCHEDULE UNFREEZE ──
+    // ── UNFREEZE ──
     if (action === 'unfreeze-membership') {
       const { memberId, boughtMembershipId, unfreezeDate, operation = 'schedule-unfreeze', memberName, memberEmail } = body;
       if (!memberId || !boughtMembershipId) return respond({ error: 'Missing IDs.' }, 400);
@@ -329,6 +330,13 @@ serve(async (req) => {
         const result = await momenceRequest(`/host/members/${memberId}/bought-memberships/${boughtMembershipId}/membership-schedule-unfreeze`, { method: 'DELETE' });
         await appendToSheet(buildLogRow({ status: 'SUCCESS', action: 'Remove scheduled unfreeze', memberId: String(memberId), memberName: memberName || '', memberEmail: memberEmail || '', boughtMembershipId: String(boughtMembershipId), note: 'Scheduled unfreeze removed.' }));
         return respond({ ok: true, operation, message: 'Scheduled unfreeze removed.', apiResponse: result });
+      }
+
+      // Unfreeze now - DELETE the freeze entirely
+      if (operation === 'unfreeze-now') {
+        const result = await momenceRequest(`/host/members/${memberId}/bought-memberships/${boughtMembershipId}/membership-schedule-freeze`, { method: 'DELETE' });
+        await appendToSheet(buildLogRow({ status: 'SUCCESS', action: 'Unfreeze now', memberId: String(memberId), memberName: memberName || '', memberEmail: memberEmail || '', boughtMembershipId: String(boughtMembershipId), note: 'Membership unfrozen immediately.' }));
+        return respond({ ok: true, operation, message: 'Membership unfrozen immediately.', apiResponse: result });
       }
 
       if (!unfreezeDate) return respond({ error: 'Unfreeze date required.' }, 400);
@@ -351,7 +359,7 @@ serve(async (req) => {
       return respond({ ok: true, message: 'Membership restarted.', apiResponse: result });
     }
 
-    // ── FREEZE HISTORY ──
+    // ── FREEZE HISTORY (ALL TIME - active + expired) ──
     if (action === 'freeze-history') {
       const { email } = body;
       if (!email) return respond({ error: 'Email required.' }, 400);
@@ -362,14 +370,22 @@ serve(async (req) => {
       const member = members.find((m: any) => (m.email || '').trim().toLowerCase() === el) || members[0];
       if (!member?.id) return respond({ error: 'No member found.' }, 404);
 
-      const msRes = await momenceRequest(`/host/members/${member.id}/bought-memberships/active?page=0&pageSize=200&includeFrozen=true`);
-      const active = Array.isArray(msRes.payload) ? msRes.payload : [];
+      // Fetch both active and expired memberships
+      const [activeRes, expiredRes] = await Promise.all([
+        momenceRequest(`/host/members/${member.id}/bought-memberships/active?page=0&pageSize=200&includeFrozen=true`),
+        momenceRequest(`/host/members/${member.id}/bought-memberships/expired?page=0&pageSize=200`).catch(() => ({ payload: [] })),
+      ]);
 
-      const rows = active.map((m: any) => {
+      const active = Array.isArray(activeRes.payload) ? activeRes.payload : [];
+      const expired = Array.isArray(expiredRes.payload) ? expiredRes.payload : [];
+      const allMemberships = [...active, ...expired];
+
+      const rows = allMemberships.map((m: any) => {
         const usage = buildFreezeFallback(m);
         const policy = getPolicy(m.membership?.name);
         const elig = policy ? evaluate(m, policy, usage) : { eligible: false, reason: 'No policy', attemptsRemaining: 0, daysRemaining: 0 };
         const location = m.location?.name || m.membership?.location?.name || m.hostLocation?.name || 'Mumbai';
+        const isExpired = expired.some((e: any) => e.id === m.id);
 
         return {
           membershipId: m.id,
@@ -378,6 +394,7 @@ serve(async (req) => {
           startDate: m.startDate,
           endDate: m.endDate,
           isFrozen: m.isFrozen,
+          isExpired,
           scheduledFreezeAt: m.freeze?.scheduledFreezeAt || m.freeze?.freezeAt || null,
           scheduledUnfreezeAt: m.freeze?.unfreezedScheduledAt || m.freeze?.scheduledUnfreezeAt || null,
           freezePolicy: policy,
@@ -387,6 +404,33 @@ serve(async (req) => {
       });
 
       return respond({ memberId: member.id, memberName: `${member.firstName} ${member.lastName}`, rows });
+    }
+
+    // ── MEMBER BOOKINGS ──
+    if (action === 'member-bookings') {
+      const { memberId, page = 0, pageSize = 50 } = body;
+      if (!memberId) return respond({ error: 'Member ID required.' }, 400);
+
+      const result = await momenceRequest(`/host/members/${memberId}/bookings?page=${page}&pageSize=${pageSize}&sortOrder=DESC&sortBy=createdAt`);
+      return respond(result);
+    }
+
+    // ── SESSIONS LIST ──
+    if (action === 'sessions-list') {
+      const { page = 0, pageSize = 200, startDate, endDate } = body;
+      let url = `/host/sessions?page=${page}&pageSize=${pageSize}&sortOrder=ASC&sortBy=startsAt&includeCancelled=false`;
+      if (startDate) url += `&startsAtFrom=${encodeURIComponent(startDate)}`;
+      if (endDate) url += `&startsAtTo=${encodeURIComponent(endDate)}`;
+      const result = await momenceRequest(url);
+      return respond(result);
+    }
+
+    // ── SESSION DETAIL ──
+    if (action === 'session-detail') {
+      const { sessionId } = body;
+      if (!sessionId) return respond({ error: 'Session ID required.' }, 400);
+      const result = await momenceRequest(`/host/sessions/${sessionId}`);
+      return respond(result);
     }
 
     return respond({ error: 'Unknown action' }, 400);
