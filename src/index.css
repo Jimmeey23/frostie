@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 220 30% 8%;
+
+    --card: 220 20% 97%;
+    --card-foreground: 220 30% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 30% 8%;
+
+    --primary: 222 60% 28%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 94%;
+    --secondary-foreground: 220 30% 8%;
+
+    --muted: 220 14% 95%;
+    --muted-foreground: 220 10% 40%;
+
+    --accent: 222 55% 22%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 90%;
+    --input: 220 13% 90%;
+    --ring: 222 60% 28%;
+
+    --radius: 0.625rem;
+
+    --success: 160 60% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --chat-bot: 220 14% 96%;
+    --chat-user: 222 60% 28%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .chat-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .chat-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .chat-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 2px;
+  }
+
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-black/[0.04] shadow-sm;
+  }
+
+  .glass-card {
+    @apply bg-white/90 backdrop-blur-md border border-black/[0.06] shadow-sm;
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(222 60% 18%) 0%, hsl(222 55% 30%) 100%);
+  }
+
+  .gradient-bg {
+    background: hsl(220 20% 98%);
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(222 60% 18%) 0%, hsl(222 55% 32%) 100%);
+  }
+}

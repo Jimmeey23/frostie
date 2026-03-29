@@ -1,0 +1,1305 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { format, addDays, differenceInDays } from "date-fns";
+import confetti from "canvas-confetti";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import {
+  User, Mail, Phone, CalendarIcon, Snowflake, Loader2, CheckCircle2,
+  AlertTriangle, Clock, ArrowRight, RotateCcw, Shield, MapPin, History,
+  FileText, RefreshCw, ArrowLeft, Ban, XCircle, Send, Download,
+  FileDown, ImageDown, ChevronDown, Info
+} from "lucide-react";
+import { sendOtp, memberLookup, freezeMembership, unfreezeMembership, restartMembership, sendConfirmation, freezeHistory } from "@/lib/momenceApi";
+import frostieAvatar from "@/assets/frostie-avatar.png";
+
+type Step =
+  | 'welcome' | 'ask-name' | 'ask-email' | 'ask-phone'
+  | 'otp' | 'operation' | 'memberships'
+  | 'freeze-reason' | 'freeze-dates' | 'modify-unfreeze'
+  | 'confirm' | 'processing' | 'success' | 'history';
+
+type Operation = 'freeze' | 'modify' | 'restart' | 'history';
+
+interface ChatMsg {
+  id: string;
+  role: 'bot' | 'user';
+  text: string;
+  widget?: string;
+  widgetData?: any;
+  dismissed?: boolean;
+  isTyping?: boolean;
+  timestamp?: Date;
+}
+
+interface MembershipView {
+  id: number; type: string; startDate: string; endDate: string; isFrozen: boolean;
+  scheduledFreezeAt: string | null; scheduledUnfreezeAt: string | null;
+  freeze: any; location: string;
+  membership: { id: number; name: string; description?: string; duration: number; durationUnit: string };
+  freezePolicy: { name: string; attempts: number; days: number } | null;
+  freezeUsage: { attemptsUsed: number; frozenDaysUsed: number; intervals: any[] };
+  freezeEligibility: { eligible: boolean; reason: string; attemptsRemaining: number; daysRemaining: number; maxWindowDays: number };
+  actions: { canFreeze: boolean; canUnfreeze: boolean; canRemoveScheduledFreeze: boolean; canRemoveScheduledUnfreeze: boolean };
+}
+
+interface FreezeHistoryRow {
+  membershipId: number;
+  membershipName: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  isFrozen: boolean;
+  scheduledFreezeAt: string | null;
+  scheduledUnfreezeAt: string | null;
+  freezePolicy: { name: string; attempts: number; days: number } | null;
+  freezeUsage: { attemptsUsed: number; frozenDaysUsed: number; intervals: any[] };
+  freezeEligibility: { eligible: boolean; reason: string; attemptsRemaining: number; daysRemaining: number };
+}
+
+let msgId = 0;
+const nextId = () => `msg-${++msgId}`;
+
+const AGENT_NAME = "Frostie";
+
+const FREEZE_REASONS = [
+  { id: 'travel', emoji: '✈️', label: 'Travel / Vacation' },
+  { id: 'health', emoji: '🏥', label: 'Health / Injury' },
+  { id: 'work', emoji: '💼', label: 'Work / Schedule' },
+  { id: 'personal', emoji: '🏠', label: 'Personal Reasons' },
+  { id: 'other', emoji: '💬', label: 'Something Else' },
+];
+
+const WITTY_QUOTA_MESSAGES = [
+  "Uh oh! Looks like you've used up all your freeze cards! 🃏 Even Frostie can't conjure more freeze days out of thin air!",
+  "Brrr... your freeze account is running on empty! ❄️ You've squeezed every last snowflake out of this one!",
+  "Hold up, superstar! 🌟 Your freeze quota has left the building. Time to hit the barre instead!",
+  "Looks like someone's been on quite a few adventures! 🧳 No more freeze days left though — gotta work those muscles now!",
+  "Your freeze bank account balance: $0.00 ❄️💸 Time to invest in some squats instead!",
+];
+
+const SUCCESS_MESSAGES: Record<string, string[]> = {
+  travel: [
+    "Bon voyage! ✈️🌍 Your membership is frozen and waiting for you when you get back. Safe travels!",
+    "Happy trails! 🧳 Your membership is on ice. Enjoy every moment of your trip!",
+    "Off you go, jet-setter! 🛫 Membership frozen. Send us a postcard! 😄",
+  ],
+  health: [
+    "Take all the time you need! 💪 Your membership is safe and sound. Wishing you a speedy recovery!",
+    "Rest up, warrior! 🌿 We've put everything on pause. Can't wait to see you back and stronger!",
+  ],
+  work: [
+    "All work and no play... but at least your membership is safe! 💼 See you when things ease up!",
+    "Hustle mode: ON. Freeze mode: also ON! 😎 Your spot is saved.",
+  ],
+  personal: [
+    "No worries at all! 🤗 Your membership is snugly frozen. We'll be here whenever you're ready!",
+    "Life happens! Your membership is safely on ice. Take your time! ❄️",
+  ],
+  other: [
+    "All done! ✨ Your membership is frozen and we'll keep it cozy until you're back!",
+    "Consider it done! 🎉 Membership on pause. See you soon!",
+  ],
+  default: [
+    "All done! ✅ Your membership has been updated successfully. A confirmation email is on its way!",
+    "Sorted! 🎉 Everything's taken care of. Check your inbox for the confirmation!",
+  ],
+};
+
+function getSuccessMessage(reason?: string, operation?: string): string {
+  if (operation === 'restart') return "Your membership is back in action! 🚀 Time to crush those workouts!";
+  if (operation === 'modify') return "Unfreeze scheduled! 📅 We'll thaw things out right on time!";
+  const pool = SUCCESS_MESSAGES[reason || 'default'] || SUCCESS_MESSAGES.default;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function getQuotaMessage(): string {
+  return WITTY_QUOTA_MESSAGES[Math.floor(Math.random() * WITTY_QUOTA_MESSAGES.length)];
+}
+
+function getIneligibleBadge(m: MembershipView): { text: string; color: string } | null {
+  if (m.actions.canFreeze) return null;
+  if (m.isFrozen) return { text: "Currently Frozen", color: "bg-blue-100 text-blue-700 border-blue-200" };
+  if (!m.freezePolicy) return { text: "No Freeze Policy", color: "bg-gray-100 text-gray-600 border-gray-200" };
+  if (m.freezeEligibility.attemptsRemaining <= 0) return { text: "Attempts Exhausted", color: "bg-red-100 text-red-600 border-red-200" };
+  if (m.freezeEligibility.daysRemaining <= 0) return { text: "Days Exhausted", color: "bg-red-100 text-red-600 border-red-200" };
+  return { text: m.freezeEligibility.reason, color: "bg-amber-100 text-amber-700 border-amber-200" };
+}
+
+function formatTime(d: Date) {
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+export default function ChatInterface({ onComplete }: { onComplete?: () => void }) {
+  const [testMode, setTestMode] = useState(false);
+  const [step, setStep] = useState<Step>('welcome');
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [countryCode, setCountryCode] = useState('+91');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [phoneInput, setPhoneInput] = useState('');
+
+  const [otpCode, setOtpCode] = useState('');
+  const [serverOtp, setServerOtp] = useState('');
+
+  const [memberId, setMemberId] = useState<number>(0);
+  const [memberName, setMemberName] = useState('');
+  const [memberEmail, setMemberEmail] = useState('');
+  const [memberships, setMemberships] = useState<MembershipView[]>([]);
+
+  const [operation, setOperation] = useState<Operation>('freeze');
+  const [selectedMembership, setSelectedMembership] = useState<MembershipView | null>(null);
+  const [freezeReason, setFreezeReason] = useState('');
+
+  const [freezeStartDate, setFreezeStartDate] = useState<Date>();
+  const [freezeEndDate, setFreezeEndDate] = useState<Date>();
+  const [unfreezeDate, setUnfreezeDate] = useState<Date>();
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<(() => Promise<void>) | null>(null);
+  const [confirmDetails, setConfirmDetails] = useState<{ title: string; lines: string[] }>({ title: '', lines: [] });
+
+  const [historyRows, setHistoryRows] = useState<FreezeHistoryRow[]>([]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<number | null>(null);
+
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, 150);
+  }, []);
+
+  useEffect(() => { scrollToBottom(); }, [messages, step, scrollToBottom]);
+
+  useEffect(() => {
+    addBotDelayed(`Hey there! 👋 I'm **${AGENT_NAME}**, your friendly freeze assistant at Physique 57 India!`, 400, () => {
+      addBotDelayed("Let's get started! What's your **full name** (first & last)?", 800, undefined, 'ask-name-input');
+      setStep('ask-name');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dismissWidgets = useCallback(() => {
+    setMessages(prev => prev.map(m => m.widget && !m.dismissed ? { ...m, dismissed: true } : m));
+  }, []);
+
+  const addBot = useCallback((text: string, widget?: string, widgetData?: any) => {
+    setMessages(p => [...p, { id: nextId(), role: 'bot', text, widget, widgetData, timestamp: new Date() }]);
+  }, []);
+
+  const addBotDelayed = useCallback((text: string, delay: number, afterCb?: () => void, widget?: string, widgetData?: any) => {
+    const typingId = nextId();
+    setMessages(p => [...p, { id: typingId, role: 'bot', text: '', isTyping: true }]);
+    typingTimeoutRef.current = window.setTimeout(() => {
+      setMessages(p => p.filter(m => m.id !== typingId));
+      setMessages(p => [...p, { id: nextId(), role: 'bot', text, widget, widgetData, timestamp: new Date() }]);
+      afterCb?.();
+    }, delay);
+  }, []);
+
+  const addUser = useCallback((text: string) => {
+    dismissWidgets();
+    setMessages(p => [...p, { id: nextId(), role: 'user', text, timestamp: new Date() }]);
+  }, [dismissWidgets]);
+
+  useEffect(() => {
+    return () => { if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); };
+  }, []);
+
+  // ─── Handlers ───
+
+  const handleNameSubmit = () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed || !trimmed.includes(' ')) return;
+    const parts = trimmed.split(/\s+/);
+    setFirstName(parts[0]);
+    setLastName(parts.slice(1).join(' '));
+    addUser(trimmed);
+    setNameInput('');
+    addBotDelayed(`Nice to meet you, **${parts[0]}**! 😊 Now, what's your **email address**?`, 600, undefined, 'ask-email-input');
+    setStep('ask-email');
+  };
+
+  const handleEmailSubmit = () => {
+    const trimmed = emailInput.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return;
+    setEmail(trimmed);
+    addUser(trimmed);
+    setEmailInput('');
+    addBotDelayed("Great! And lastly, your **phone number** (with country code)?", 600, undefined, 'ask-phone-input');
+    setStep('ask-phone');
+  };
+
+  const handlePhoneSubmit = async () => {
+    const trimmed = phoneInput.trim();
+    if (!trimmed || trimmed.length < 6) return;
+    let cc = countryCode;
+    let num = trimmed;
+    if (trimmed.startsWith('+')) {
+      const match = trimmed.match(/^(\+\d{1,4})\s*(.+)$/);
+      if (match) { cc = match[1]; num = match[2].replace(/\s/g, ''); }
+    }
+    setCountryCode(cc);
+    setPhone(num);
+    addUser(`${cc} ${num}`);
+    setPhoneInput('');
+    setIsLoading(true);
+
+    try {
+      if (testMode) {
+        addBotDelayed("⚡ Test mode — skipping verification. Looking up your account...", 500, async () => {
+          try {
+            const result = await memberLookup(email);
+            setMemberId(result.member.id);
+            setMemberName(`${result.member.firstName} ${result.member.lastName}`);
+            setMemberEmail(result.member.email);
+            setMemberships(result.memberships || []);
+            addBot(`Welcome back, **${result.member.firstName}**! 🎉 I found ${result.memberships?.length || 0} active membership(s). What would you like to do today?`, 'operations');
+            setStep('operation');
+          } catch (e: any) {
+            addBot(`❌ ${e.message}. Let's try again!`, 'ask-name-input');
+            setStep('ask-name');
+          } finally { setIsLoading(false); }
+        });
+      } else {
+        addBotDelayed(`📧 Sending a verification code to **${email}**...`, 500, async () => {
+          try {
+            const otpResult = await sendOtp(email);
+            setServerOtp(otpResult.otp);
+            addBot("Code sent! 🔐 Please enter the 6-digit verification code below.", 'otp');
+            setStep('otp');
+          } catch (e: any) {
+            addBot(`❌ ${e.message}. Please try again.`, 'ask-name-input');
+            setStep('ask-name');
+          } finally { setIsLoading(false); }
+        });
+      }
+    } catch { setIsLoading(false); }
+  };
+
+  const handleOtpVerify = async () => {
+    if (otpCode !== serverOtp) {
+      addBot("❌ Hmm, that code doesn't match. Let's try again!", 'otp');
+      setOtpCode('');
+      return;
+    }
+    addUser(`Code: ••••${otpCode.slice(-2)}`);
+    setIsLoading(true);
+    addBotDelayed("✅ Verified! Let me pull up your account...", 600, async () => {
+      try {
+        const result = await memberLookup(email);
+        setMemberId(result.member.id);
+        setMemberName(`${result.member.firstName} ${result.member.lastName}`);
+        setMemberEmail(result.member.email);
+        setMemberships(result.memberships || []);
+        addBot(`Welcome back, **${result.member.firstName}**! 🎉 I found ${result.memberships?.length || 0} active membership(s). What would you like to do?`, 'operations');
+        setStep('operation');
+      } catch (e: any) { addBot(`❌ ${e.message}`); }
+      finally { setIsLoading(false); }
+    });
+  };
+
+  const handleOperation = async (op: Operation) => {
+    setOperation(op);
+    const labels: Record<Operation, string> = {
+      freeze: '❄️ Freeze Membership', modify: '🔧 Modify Frozen Membership',
+      restart: '🔄 Restart Membership', history: '📋 View Freeze History',
+    };
+    addUser(labels[op]);
+
+    if (op === 'history') {
+      setIsLoading(true);
+      try {
+        const result = await freezeHistory(email);
+        setHistoryRows(result.rows || []);
+        addBotDelayed("Here's your complete freeze history across all memberships 📊", 600, undefined, 'history-table', result.rows);
+        setStep('history');
+      } catch (e: any) { addBot(`❌ ${e.message}`); }
+      finally { setIsLoading(false); }
+      return;
+    }
+
+    if (op === 'freeze') {
+      const hasEligible = memberships.some(m => m.actions.canFreeze);
+      if (!hasEligible) {
+        addBotDelayed(getQuotaMessage(), 700, () => { addBot("Would you like to try something else?", 'operations'); });
+        return;
+      }
+      addBotDelayed("Here are your memberships. Tap an eligible one to continue: 👇", 600, undefined, 'memberships-all');
+      setStep('memberships');
+      return;
+    }
+
+    const filtered = memberships.filter(m => m.isFrozen || m.actions.canRemoveScheduledFreeze);
+    if (filtered.length === 0) {
+      addBotDelayed("Hmm, no frozen memberships found! 🤔 Would you like to try something else?", 600, undefined, 'operations');
+      return;
+    }
+    addBotDelayed(`Here are your ${op === 'modify' ? 'frozen' : ''} memberships:`, 600, undefined, 'memberships');
+    setStep('memberships');
+  };
+
+  const handleMembershipSelect = (m: MembershipView) => {
+    setSelectedMembership(m);
+    addUser(`Selected: ${m.membership.name}`);
+
+    if (operation === 'freeze') {
+      addBotDelayed("Before we freeze — mind telling me why? (Totally optional but helps us personalise! 😄)", 600, undefined, 'freeze-reason');
+      setStep('freeze-reason');
+    } else if (operation === 'modify') {
+      addBotDelayed("When would you like this membership to unfreeze? (Max 30 days from freeze start)", 600, undefined, 'modify-unfreeze');
+      setStep('modify-unfreeze');
+    } else if (operation === 'restart') {
+      setConfirmDetails({
+        title: 'Restart Membership',
+        lines: [
+          `Membership: ${m.membership.name}`,
+          m.isFrozen ? 'This will unfreeze the membership immediately.' : 'This will cancel the scheduled freeze.',
+        ],
+      });
+      setConfirmAction(() => async () => {
+        await restartMembership(memberId, m.id, memberName, memberEmail);
+        try { await sendConfirmation({ to: memberEmail, memberName, membershipName: m.membership.name, action: 'restart' }); } catch (e) { console.error('Confirmation email failed:', e); }
+      });
+      setShowConfirm(true);
+    }
+  };
+
+  const handleReasonSelect = (reasonId: string) => {
+    const reason = FREEZE_REASONS.find(r => r.id === reasonId);
+    setFreezeReason(reasonId);
+    addUser(`${reason?.emoji} ${reason?.label}`);
+    if (!selectedMembership) return;
+    addBotDelayed(`Got it! Choose your freeze window below. You have **${selectedMembership.freezeEligibility.daysRemaining} day(s)** remaining (max 30 per freeze). ❄️`, 600, undefined, 'freeze-dates');
+    setStep('freeze-dates');
+  };
+
+  const handleSkipReason = () => {
+    setFreezeReason('');
+    addUser("Skip — no reason");
+    if (!selectedMembership) return;
+    addBotDelayed(`No problem! You have **${selectedMembership.freezeEligibility.daysRemaining} day(s)** remaining. Pick your dates below: 📅`, 600, undefined, 'freeze-dates');
+    setStep('freeze-dates');
+  };
+
+  const handleFreezeSubmit = () => {
+    if (!freezeStartDate || !freezeEndDate || !selectedMembership) return;
+    const days = differenceInDays(freezeEndDate, freezeStartDate) + 1;
+    const resumeDate = addDays(freezeEndDate, 1);
+
+    setConfirmDetails({
+      title: 'Confirm Freeze',
+      lines: [
+        `Membership: ${selectedMembership.membership.name}`,
+        `Freeze: ${format(freezeStartDate, 'dd MMM yyyy')} → ${format(freezeEndDate, 'dd MMM yyyy')} (${days} days)`,
+        `Resume: ${format(resumeDate, 'dd MMM yyyy')}`,
+        ...(freezeReason ? [`Reason: ${FREEZE_REASONS.find(r => r.id === freezeReason)?.label || freezeReason}`] : []),
+      ],
+    });
+    setConfirmAction(() => async () => {
+      await freezeMembership({
+        memberId, boughtMembershipId: selectedMembership.id,
+        startDate: freezeStartDate.toISOString(), endDate: freezeEndDate.toISOString(),
+        operation: 'scheduled-window', memberName, memberEmail,
+      });
+      try {
+        await sendConfirmation({
+          to: memberEmail, memberName, membershipName: selectedMembership.membership.name,
+          action: 'freeze', freezeStart: freezeStartDate.toISOString(),
+          freezeEnd: freezeEndDate.toISOString(), resumeDate: addDays(freezeEndDate, 1).toISOString(),
+        });
+      } catch (e) { console.error('Confirmation email failed:', e); }
+    });
+    setShowConfirm(true);
+  };
+
+  const handleUnfreezeSubmit = () => {
+    if (!unfreezeDate || !selectedMembership) return;
+    const resumeDate = addDays(unfreezeDate, 1);
+    setConfirmDetails({
+      title: 'Schedule Unfreeze',
+      lines: [
+        `Membership: ${selectedMembership.membership.name}`,
+        `Unfreeze on: ${format(unfreezeDate, 'dd MMM yyyy')}`,
+        `Resume on: ${format(resumeDate, 'dd MMM yyyy')}`,
+      ],
+    });
+    setConfirmAction(() => async () => {
+      await unfreezeMembership({
+        memberId, boughtMembershipId: selectedMembership.id,
+        unfreezeDate: unfreezeDate.toISOString(), operation: 'schedule-unfreeze', memberName, memberEmail,
+      });
+      try {
+        await sendConfirmation({
+          to: memberEmail, memberName, membershipName: selectedMembership.membership.name,
+          action: 'unfreeze', unfreezeDate: unfreezeDate.toISOString(),
+          resumeDate: addDays(unfreezeDate, 1).toISOString(),
+        });
+      } catch (e) { console.error('Confirmation email failed:', e); }
+    });
+    setShowConfirm(true);
+  };
+
+  const fireConfetti = () => {
+    const duration = 2000;
+    const end = Date.now() + duration;
+    const frame = () => {
+      confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 }, colors: ['#3b82f6', '#8b5cf6', '#ec4899'] });
+      confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 }, colors: ['#10b981', '#f59e0b', '#06b6d4'] });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    };
+    frame();
+  };
+
+  const handleConfirmExecute = async () => {
+    setShowConfirm(false);
+    addBot("⏳ Processing your request...");
+    setIsLoading(true);
+    try {
+      if (confirmAction) await confirmAction();
+      const msg = getSuccessMessage(freezeReason, operation);
+      fireConfetti();
+      addBotDelayed(msg, 800, undefined, 'success');
+      setStep('success');
+    } catch (e: any) {
+      const errMsg = e.message || 'Something went wrong';
+      if (errMsg.toLowerCase().includes('limit') || errMsg.toLowerCase().includes('exceed') || errMsg.toLowerCase().includes('remaining')) {
+        addBotDelayed(getQuotaMessage(), 600, () => { addBot("Would you like to try something else?", 'operations'); });
+      } else {
+        addBot(`❌ Oops! ${errMsg}. Want to give it another shot?`, 'operations');
+      }
+      setStep('operation');
+    } finally { setIsLoading(false); }
+  };
+
+  const handleBackToOperations = () => {
+    dismissWidgets();
+    addBotDelayed("What else can I help you with? 😊", 400, undefined, 'operations');
+    setStep('operation');
+  };
+
+  const handleGoHome = () => { onComplete?.(); };
+
+  // ─── Export handlers ───
+
+  const exportCSV = (rows: FreezeHistoryRow[]) => {
+    const headers = ['Membership', 'Location', 'Membership Start', 'Membership End', 'Freeze #', 'Freeze Start', 'Freeze End', 'Duration (days)', 'Status', 'Policy', 'Attempts Used', 'Attempts Left', 'Days Used', 'Days Left'];
+    const csvRows = [headers.join(',')];
+    rows.forEach(row => {
+      if (row.freezeUsage?.intervals?.length > 0) {
+        row.freezeUsage.intervals.forEach((interval: any, idx: number) => {
+          const start = new Date(interval.freezeAt);
+          const end = interval.unfreezeAt ? new Date(interval.unfreezeAt) : null;
+          const days = end ? differenceInDays(end, start) + 1 : differenceInDays(new Date(), start) + 1;
+          csvRows.push([
+            `"${row.membershipName}"`, `"${row.location}"`,
+            new Date(row.startDate).toLocaleDateString(), new Date(row.endDate).toLocaleDateString(),
+            idx + 1, start.toLocaleDateString(), end ? end.toLocaleDateString() : 'Ongoing',
+            days, interval.unfreezeAt ? 'Completed' : 'Active',
+            row.freezePolicy?.name || 'None',
+            row.freezeUsage.attemptsUsed, row.freezeEligibility.attemptsRemaining,
+            row.freezeUsage.frozenDaysUsed, row.freezeEligibility.daysRemaining,
+          ].join(','));
+        });
+      } else {
+        csvRows.push([
+          `"${row.membershipName}"`, `"${row.location}"`,
+          new Date(row.startDate).toLocaleDateString(), new Date(row.endDate).toLocaleDateString(),
+          '-', '-', '-', '-', 'No History',
+          row.freezePolicy?.name || 'None', 0, row.freezeEligibility?.attemptsRemaining ?? '-',
+          0, row.freezeEligibility?.daysRemaining ?? '-',
+        ].join(','));
+      }
+    });
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `freeze-history-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const exportPDF = async (rows: FreezeHistoryRow[]) => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    doc.setFontSize(18);
+    doc.text('Freeze History Report', 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Member: ${memberName} | Email: ${memberEmail}`, 14, 28);
+    doc.text(`Generated: ${format(new Date(), 'dd MMM yyyy, HH:mm')}`, 14, 34);
+
+    let y = 44;
+    rows.forEach(row => {
+      if (y > 180) { doc.addPage(); y = 20; }
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${row.membershipName} — ${row.location}`, 14, y);
+      y += 6;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Period: ${new Date(row.startDate).toLocaleDateString()} → ${new Date(row.endDate).toLocaleDateString()} | Status: ${row.isFrozen ? 'CURRENTLY FROZEN' : 'Active'}`, 14, y);
+      y += 5;
+      if (row.freezePolicy) {
+        doc.text(`Policy: ${row.freezePolicy.name} | Attempts: ${row.freezeUsage.attemptsUsed}/${row.freezePolicy.attempts} used | Days: ${row.freezeUsage.frozenDaysUsed}/${row.freezePolicy.days} used`, 14, y);
+        y += 5;
+      }
+
+      if (row.freezeUsage?.intervals?.length > 0) {
+        // Table header
+        doc.setFont('helvetica', 'bold');
+        doc.text('#', 16, y); doc.text('Freeze Start', 26, y); doc.text('Freeze End', 66, y);
+        doc.text('Duration', 106, y); doc.text('Status', 130, y);
+        y += 4;
+        doc.setFont('helvetica', 'normal');
+
+        row.freezeUsage.intervals.forEach((interval: any, idx: number) => {
+          if (y > 190) { doc.addPage(); y = 20; }
+          const start = new Date(interval.freezeAt);
+          const end = interval.unfreezeAt ? new Date(interval.unfreezeAt) : null;
+          const days = end ? differenceInDays(end, start) + 1 : differenceInDays(new Date(), start) + 1;
+          doc.text(`${idx + 1}`, 16, y);
+          doc.text(start.toLocaleDateString(), 26, y);
+          doc.text(end ? end.toLocaleDateString() : 'Ongoing', 66, y);
+          doc.text(`${days} days`, 106, y);
+          doc.text(interval.unfreezeAt ? 'Completed' : 'Active', 130, y);
+          y += 4;
+        });
+      } else {
+        doc.text('No freeze history recorded.', 16, y);
+        y += 4;
+      }
+      y += 6;
+    });
+
+    doc.save(`freeze-history-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+  };
+
+  const exportImage = async () => {
+    if (!historyRef.current) return;
+    try {
+      const canvas = await html2canvas(historyRef.current, { scale: 2, backgroundColor: '#ffffff' });
+      const link = document.createElement('a');
+      link.download = `freeze-history-${format(new Date(), 'yyyy-MM-dd')}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) { console.error('Image export failed:', e); }
+  };
+
+  const filteredMemberships = operation === 'freeze'
+    ? memberships
+    : memberships.filter(m => m.isFrozen || m.actions.canRemoveScheduledFreeze);
+
+  const maxFreezeEnd = freezeStartDate ? addDays(freezeStartDate, Math.min(selectedMembership?.freezeEligibility?.maxWindowDays || 30, 30) - 1) : undefined;
+  const freezeDays = freezeStartDate && freezeEndDate ? differenceInDays(freezeEndDate, freezeStartDate) + 1 : 0;
+  const resumeDateCalc = freezeEndDate ? addDays(freezeEndDate, 1) : null;
+  const unfreezeResume = unfreezeDate ? addDays(unfreezeDate, 1) : null;
+
+  // ─── Build disclaimer text for success ───
+  const getDisclaimer = () => {
+    if (!selectedMembership) return null;
+    const policy = selectedMembership.freezePolicy;
+    if (!policy) return null;
+    const attemptsLeft = Math.max(0, selectedMembership.freezeEligibility.attemptsRemaining - (operation === 'freeze' ? 1 : 0));
+    const daysLeft = Math.max(0, selectedMembership.freezeEligibility.daysRemaining - freezeDays);
+    const lines: string[] = [];
+    lines.push(`📌 You have **${attemptsLeft}** freeze attempt(s) and **${daysLeft}** freeze day(s) remaining for this membership.`);
+    if (operation === 'freeze' && freezeEndDate) {
+      lines.push(`⏰ Your membership will **auto-unfreeze on ${format(freezeEndDate, 'dd MMM yyyy')}** unless you return to this portal to extend it.`);
+    }
+    return lines;
+  };
+
+  // ─── Widget renderers ───
+  const renderWidget = (msg: ChatMsg) => {
+    if (msg.dismissed) return null;
+
+    switch (msg.widget) {
+      case 'ask-name-input':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="flex gap-2 items-center">
+              <Input
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleNameSubmit()}
+                placeholder="e.g. John Doe"
+                className="h-10 text-sm bg-background border-border rounded-full px-4 focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                autoFocus
+              />
+              <Button onClick={handleNameSubmit} disabled={!nameInput.trim().includes(' ')} size="icon" className="h-10 w-10 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1 ml-3">First and last name please ✨</p>
+          </motion.div>
+        );
+
+      case 'ask-email-input':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="flex gap-2 items-center">
+              <div className="relative flex-1">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                <Input
+                  type="email" value={emailInput}
+                  onChange={e => setEmailInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()}
+                  placeholder="you@example.com"
+                  className="pl-9 h-10 text-sm bg-background border-border rounded-full focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                  autoFocus
+                />
+              </div>
+              <Button onClick={handleEmailSubmit} disabled={!emailInput.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)} size="icon" className="h-10 w-10 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </motion.div>
+        );
+
+      case 'ask-phone-input':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="flex gap-2 items-center">
+              <div className="relative flex-1">
+                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                <Input
+                  value={phoneInput}
+                  onChange={e => setPhoneInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handlePhoneSubmit()}
+                  placeholder="+91 9876543210"
+                  className="pl-9 h-10 text-sm bg-background border-border rounded-full focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                  autoFocus
+                />
+              </div>
+              <Button onClick={handlePhoneSubmit} disabled={!phoneInput.trim() || phoneInput.trim().length < 6 || isLoading} size="icon" className="h-10 w-10 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1 ml-3">Include country code (e.g. +91)</p>
+          </motion.div>
+        );
+
+      case 'otp':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+              <div className="flex justify-center">
+                <InputOTP maxLength={6} value={otpCode} onChange={setOtpCode}>
+                  <InputOTPGroup>
+                    {[0,1,2,3,4,5].map(i => <InputOTPSlot key={i} index={i} className="h-11 w-11 text-sm bg-background border-border rounded-xl" />)}
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
+              <Button onClick={handleOtpVerify} disabled={otpCode.length !== 6 || isLoading} className="w-full h-10 gradient-primary text-primary-foreground text-sm font-semibold rounded-full shadow-lg shadow-primary/20">
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                Verify Code
+              </Button>
+            </div>
+          </motion.div>
+        );
+
+      case 'operations':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { op: 'freeze' as Operation, icon: Snowflake, label: 'Freeze', desc: 'Pause membership', color: 'from-blue-500/10 to-blue-600/5 border-blue-200/60 hover:border-blue-300' },
+                { op: 'modify' as Operation, icon: Clock, label: 'Modify Freeze', desc: 'Change dates', color: 'from-amber-500/10 to-amber-600/5 border-amber-200/60 hover:border-amber-300' },
+                { op: 'restart' as Operation, icon: RotateCcw, label: 'Restart', desc: 'Resume now', color: 'from-emerald-500/10 to-emerald-600/5 border-emerald-200/60 hover:border-emerald-300' },
+                { op: 'history' as Operation, icon: FileText, label: 'History', desc: 'View past freezes', color: 'from-purple-500/10 to-purple-600/5 border-purple-200/60 hover:border-purple-300' },
+              ].map(({ op, icon: Icon, label, desc, color }) => (
+                <motion.button
+                  key={op}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleOperation(op)}
+                  className={cn(
+                    "flex flex-col items-start gap-1 p-3.5 rounded-xl border bg-gradient-to-br transition-all cursor-pointer text-left",
+                    color
+                  )}
+                >
+                  <Icon className="h-4 w-4 text-foreground/70" />
+                  <span className="text-[13px] font-semibold text-foreground">{label}</span>
+                  <span className="text-[10px] text-muted-foreground">{desc}</span>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        );
+
+      case 'memberships':
+      case 'memberships-all': {
+        const list = msg.widget === 'memberships-all' ? memberships : filteredMemberships;
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5 space-y-2">
+            {list.map(m => {
+              const ineligible = operation === 'freeze' ? getIneligibleBadge(m) : null;
+              const isClickable = operation === 'freeze' ? m.actions.canFreeze : true;
+
+              return (
+                <motion.button
+                  key={m.id}
+                  whileHover={isClickable ? { scale: 1.01 } : {}}
+                  whileTap={isClickable ? { scale: 0.99 } : {}}
+                  onClick={() => isClickable && handleMembershipSelect(m)}
+                  disabled={!isClickable}
+                  className={cn(
+                    "w-full text-left border rounded-xl p-3.5 transition-all group",
+                    m.isFrozen && "ring-2 ring-blue-300/40",
+                    isClickable
+                      ? "bg-card border-border hover:border-primary/30 hover:shadow-md cursor-pointer"
+                      : "bg-muted/30 border-border/30 opacity-60 cursor-not-allowed"
+                  )}
+                >
+                  <div className="flex items-start justify-between mb-1.5">
+                    <h4 className={cn("font-semibold text-[13px]", isClickable ? "text-foreground group-hover:text-primary" : "text-muted-foreground")}>
+                      {m.membership.name}
+                    </h4>
+                    <div className="flex gap-1 flex-wrap justify-end">
+                      {m.isFrozen && (
+                        <Badge className="text-[8px] font-bold bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 animate-pulse">
+                          ❄️ FROZEN
+                        </Badge>
+                      )}
+                      {m.scheduledFreezeAt && !m.isFrozen && (
+                        <Badge className="text-[8px] font-semibold bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100">
+                          ⏰ Scheduled
+                        </Badge>
+                      )}
+                      {ineligible && !m.isFrozen && (
+                        <Badge className={cn("text-[8px] font-semibold border", ineligible.color)}>
+                          {ineligible.text}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-0.5 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex items-center gap-0.5"><CalendarIcon className="h-2.5 w-2.5" />{new Date(m.startDate).toLocaleDateString()} → {new Date(m.endDate).toLocaleDateString()}</span>
+                      <span className="flex items-center gap-0.5"><MapPin className="h-2.5 w-2.5" />{m.location}</span>
+                    </div>
+                    {m.freezePolicy && (
+                      <div className="flex items-center gap-1">
+                        <History className="h-2.5 w-2.5" />
+                        <span>{m.freezeEligibility.attemptsRemaining}/{m.freezePolicy.attempts} freezes · {m.freezeEligibility.daysRemaining}/{m.freezePolicy.days} days left</span>
+                      </div>
+                    )}
+                    {!m.freezePolicy && (
+                      <div className="flex items-center gap-1 text-muted-foreground/50 italic">
+                        <XCircle className="h-2.5 w-2.5" />
+                        <span>No freeze policy assigned</span>
+                      </div>
+                    )}
+                  </div>
+                  {isClickable && (
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-primary/50 group-hover:text-primary transition-colors">
+                      <span>Select</span><ArrowRight className="h-2.5 w-2.5" />
+                    </div>
+                  )}
+                </motion.button>
+              );
+            })}
+            <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1">
+              ← Back to options
+            </button>
+          </motion.div>
+        );
+      }
+
+      case 'freeze-reason':
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="flex flex-wrap gap-1.5">
+              {FREEZE_REASONS.map(r => (
+                <motion.button
+                  key={r.id}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => handleReasonSelect(r.id)}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-full border border-border bg-card text-[12px] font-medium text-foreground hover:bg-primary/5 hover:border-primary/30 transition-all"
+                >
+                  <span>{r.emoji}</span>{r.label}
+                </motion.button>
+              ))}
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleSkipReason}
+                className="inline-flex items-center px-3 py-2 rounded-full border border-dashed border-border bg-transparent text-[11px] text-muted-foreground hover:text-foreground transition-all"
+              >
+                Skip →
+              </motion.button>
+            </div>
+          </motion.div>
+        );
+
+      case 'freeze-dates':
+        return selectedMembership ? (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <Label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 block">Start</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn("w-full h-9 justify-start text-left text-xs font-normal bg-background border-border rounded-lg", !freezeStartDate && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-1.5 h-3 w-3" />
+                        {freezeStartDate ? format(freezeStartDate, "dd MMM yyyy") : "Select"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={freezeStartDate} onSelect={(d) => { setFreezeStartDate(d); setFreezeEndDate(undefined); }} disabled={d => d < new Date()} initialFocus className="p-3 pointer-events-auto" />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div>
+                  <Label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 block">End</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn("w-full h-9 justify-start text-left text-xs font-normal bg-background border-border rounded-lg", !freezeEndDate && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-1.5 h-3 w-3" />
+                        {freezeEndDate ? format(freezeEndDate, "dd MMM yyyy") : "Select"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={freezeEndDate} onSelect={setFreezeEndDate} disabled={d => !freezeStartDate || d < freezeStartDate || (maxFreezeEnd ? d > maxFreezeEnd : false)} initialFocus className="p-3 pointer-events-auto" />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+
+              {freezeDays > 0 && (
+                <div className="bg-primary/5 border border-primary/10 rounded-lg p-2.5 text-[11px] space-y-0.5">
+                  <p className="font-semibold text-foreground">{freezeDays} day{freezeDays !== 1 ? 's' : ''} selected</p>
+                  {resumeDateCalc && <p className="text-muted-foreground">Resume: <span className="font-medium text-foreground">{format(resumeDateCalc, 'dd MMM yyyy')}</span></p>}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground rounded-lg h-9">← Back</Button>
+                <Button onClick={handleFreezeSubmit} disabled={!freezeStartDate || !freezeEndDate} className="flex-1 h-10 gradient-primary text-primary-foreground text-sm font-semibold rounded-full shadow-lg shadow-primary/20">
+                  <Snowflake className="h-3.5 w-3.5 mr-1.5" /> Freeze
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        ) : null;
+
+      case 'modify-unfreeze':
+        return selectedMembership ? (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm">
+              <div>
+                <Label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 block">Unfreeze Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className={cn("w-full h-9 justify-start text-left text-xs font-normal bg-background border-border rounded-lg", !unfreezeDate && "text-muted-foreground")}>
+                      <CalendarIcon className="mr-1.5 h-3 w-3" />
+                      {unfreezeDate ? format(unfreezeDate, "dd MMM yyyy") : "Select unfreeze date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={unfreezeDate} onSelect={setUnfreezeDate} disabled={d => d < new Date() || d > addDays(new Date(), 30)} initialFocus className="p-3 pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              {unfreezeResume && (
+                <div className="bg-primary/5 border border-primary/10 rounded-lg p-2.5 text-[11px]">
+                  <p className="text-muted-foreground">Resume: <span className="font-medium text-foreground">{format(unfreezeResume, 'dd MMM yyyy')}</span></p>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground rounded-lg h-9">← Back</Button>
+                <Button onClick={handleUnfreezeSubmit} disabled={!unfreezeDate} className="flex-1 h-10 gradient-primary text-primary-foreground text-sm font-semibold rounded-full shadow-lg shadow-primary/20">
+                  <Clock className="h-3.5 w-3.5 mr-1.5" /> Schedule Unfreeze
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        ) : null;
+
+      case 'success': {
+        const disclaimer = getDisclaimer();
+        return (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }} className="mt-2.5">
+            <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.15, type: "spring", stiffness: 200 }}
+                className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3"
+              >
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+              </motion.div>
+              <h3 className="text-sm font-bold text-foreground mb-1">All Done! 🎉</h3>
+              <p className="text-[11px] text-muted-foreground mb-3">A confirmation email has been sent to your inbox.</p>
+
+              {disclaimer && (
+                <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3 mb-3 text-left space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                    <Info className="h-3 w-3" /> Important
+                  </div>
+                  {disclaimer.map((line, i) => (
+                    <p key={i} className="text-[11px] text-amber-900/80 leading-relaxed">
+                      {line.split('**').map((part, j) => j % 2 === 1 ? <strong key={j}>{part}</strong> : part)}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-center">
+                <Button onClick={handleBackToOperations} variant="outline" size="sm" className="text-xs rounded-full px-4 h-9">
+                  <RefreshCw className="h-3 w-3 mr-1.5" /> Do More
+                </Button>
+                {onComplete && (
+                  <Button onClick={handleGoHome} size="sm" className="text-xs rounded-full px-4 h-9 gradient-primary text-primary-foreground">
+                    <ArrowLeft className="h-3 w-3 mr-1.5" /> Home
+                  </Button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        );
+      }
+
+      case 'history-table': {
+        const rows = (msg.widgetData || historyRows) as FreezeHistoryRow[];
+        const grouped = rows.reduce<Record<number, FreezeHistoryRow>>((acc, r) => {
+          acc[r.membershipId] = r;
+          return acc;
+        }, {});
+
+        return (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
+            {/* Export toolbar */}
+            <div className="flex items-center gap-1.5 mb-2.5">
+              <span className="text-[10px] text-muted-foreground font-medium mr-auto">Download:</span>
+              <Button variant="outline" size="sm" onClick={() => exportCSV(rows)} className="h-7 px-2.5 text-[10px] rounded-lg gap-1">
+                <FileDown className="h-3 w-3" /> CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => exportPDF(rows)} className="h-7 px-2.5 text-[10px] rounded-lg gap-1">
+                <Download className="h-3 w-3" /> PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportImage} className="h-7 px-2.5 text-[10px] rounded-lg gap-1">
+                <ImageDown className="h-3 w-3" /> Image
+              </Button>
+            </div>
+
+            <div ref={historyRef} className="space-y-2.5">
+              {Object.values(grouped).map(row => {
+                const totalIntervals = row.freezeUsage?.intervals?.length || 0;
+                return (
+                  <div key={row.membershipId} className={cn("bg-card border rounded-xl overflow-hidden shadow-sm", row.isFrozen ? "border-blue-300/50 ring-1 ring-blue-200/30" : "border-border")}>
+                    {/* Header */}
+                    <div className={cn("px-3.5 py-2.5 border-b flex items-center justify-between", row.isFrozen ? "bg-blue-50/60 border-blue-200/30" : "bg-muted/30 border-border/30")}>
+                      <div>
+                        <h4 className="text-[12px] font-bold text-foreground flex items-center gap-1.5">
+                          {row.membershipName}
+                          {row.isFrozen && (
+                            <Badge className="text-[7px] font-bold bg-blue-500 text-white border-0 hover:bg-blue-500 animate-pulse px-1.5 py-0">
+                              ❄️ FROZEN
+                            </Badge>
+                          )}
+                          {row.scheduledFreezeAt && !row.isFrozen && (
+                            <Badge className="text-[7px] font-semibold bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 px-1.5 py-0">
+                              ⏰ Scheduled
+                            </Badge>
+                          )}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-0.5 text-[9px] text-muted-foreground">
+                          <span className="flex items-center gap-0.5"><MapPin className="h-2 w-2" />{row.location}</span>
+                          <span>•</span>
+                          <span>{new Date(row.startDate).toLocaleDateString()} → {new Date(row.endDate).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <div className="text-right space-y-0.5">
+                        {row.freezePolicy ? (
+                          <>
+                            <div className="text-[9px] text-muted-foreground">
+                              <span className="font-bold text-foreground">{row.freezeUsage.attemptsUsed}</span>/{row.freezePolicy.attempts} attempts
+                            </div>
+                            <div className="text-[9px] text-muted-foreground">
+                              <span className="font-bold text-foreground">{row.freezeUsage.frozenDaysUsed}</span>/{row.freezePolicy.days} days used
+                            </div>
+                            <div className="text-[8px] text-primary/70 font-medium">
+                              {row.freezeEligibility.attemptsRemaining} left · {row.freezeEligibility.daysRemaining}d left
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-[9px] text-muted-foreground/50 italic">No policy</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Intervals table */}
+                    {totalIntervals > 0 ? (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="border-b border-border/20">
+                              <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3 w-8">#</TableHead>
+                              <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Freeze Start</TableHead>
+                              <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Freeze End</TableHead>
+                              <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Days</TableHead>
+                              <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Requested</TableHead>
+                              <TableHead className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground py-1.5 px-3">Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {row.freezeUsage.intervals.map((interval: any, idx: number) => {
+                              const start = new Date(interval.freezeAt);
+                              const end = interval.unfreezeAt ? new Date(interval.unfreezeAt) : null;
+                              const days = end ? differenceInDays(end, start) + 1 : differenceInDays(new Date(), start) + 1;
+                              const isOngoing = !interval.unfreezeAt;
+                              const requested = interval.createdAt ? new Date(interval.createdAt).toLocaleDateString() : '—';
+
+                              return (
+                                <TableRow key={idx} className={cn("border-b border-border/10", isOngoing && "bg-blue-50/20")}>
+                                  <TableCell className="text-[10px] py-1.5 px-3 text-muted-foreground font-mono">{idx + 1}</TableCell>
+                                  <TableCell className="text-[10px] py-1.5 px-3 font-medium">{start.toLocaleDateString()}</TableCell>
+                                  <TableCell className="text-[10px] py-1.5 px-3">{end ? end.toLocaleDateString() : '—'}</TableCell>
+                                  <TableCell className="text-[10px] py-1.5 px-3 font-semibold">{days}d</TableCell>
+                                  <TableCell className="text-[10px] py-1.5 px-3 text-muted-foreground">{requested}</TableCell>
+                                  <TableCell className="py-1.5 px-3">
+                                    {isOngoing ? (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[7px] font-bold">
+                                        ❄️ Active
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[7px] font-medium">
+                                        ✓ Done
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+
+                        {/* Summary row below table */}
+                        <div className="px-3.5 py-2 bg-muted/20 border-t border-border/20 flex items-center justify-between text-[9px] text-muted-foreground">
+                          <span>{totalIntervals} freeze{totalIntervals !== 1 ? 's' : ''} total · {row.freezeUsage.frozenDaysUsed} days used</span>
+                          {row.freezePolicy && (
+                            <span className="font-semibold text-foreground">
+                              {row.freezeEligibility.attemptsRemaining} attempt{row.freezeEligibility.attemptsRemaining !== 1 ? 's' : ''} · {row.freezeEligibility.daysRemaining}d remaining
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="px-3.5 py-3 text-[10px] text-muted-foreground/50 italic text-center">
+                        No freeze history for this membership yet
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-2.5">
+              <button onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                ← Back to options
+              </button>
+            </div>
+          </motion.div>
+        );
+      }
+
+      default:
+        return null;
+    }
+  };
+
+  // ─── Render ───
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Chat Panel */}
+      <div className="flex flex-col w-full lg:w-[55%] h-full">
+        {/* Header — messenger style */}
+        <header className="gradient-primary px-4 py-3 flex items-center gap-3 shadow-lg shadow-primary/10 relative">
+          {onComplete && (
+            <button onClick={handleGoHome} className="mr-0.5 p-1 rounded-full hover:bg-white/10 transition-colors">
+              <ArrowLeft className="h-4 w-4 text-primary-foreground/70" />
+            </button>
+          )}
+          <div className="relative">
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-white p-0.5 shadow-md flex-shrink-0">
+              <img src={frostieAvatar} alt={AGENT_NAME} className="w-full h-full object-contain rounded-full" />
+            </div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-sm font-bold text-primary-foreground tracking-tight font-display">{AGENT_NAME}</h1>
+            <p className="text-[10px] text-primary-foreground/50 font-medium truncate">Physique 57 India · Freeze Assistant</p>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <label className="flex items-center gap-1 cursor-pointer select-none">
+              <span className="text-[9px] text-primary-foreground/40 font-medium">Test</span>
+              <Switch checked={testMode} onCheckedChange={setTestMode} className="scale-[0.6]" />
+            </label>
+          </div>
+        </header>
+
+        {/* Messages area — chat pattern background */}
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto chat-scrollbar px-4 py-4 space-y-3"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundColor: 'hsl(var(--muted) / 0.3)',
+          }}
+        >
+          {/* Today marker */}
+          <div className="flex justify-center mb-2">
+            <span className="text-[9px] font-medium text-muted-foreground bg-card/80 backdrop-blur-sm border border-border/40 rounded-full px-3 py-1 shadow-sm">
+              Today
+            </span>
+          </div>
+
+          <AnimatePresence>
+            {messages.map(msg => {
+              if (msg.isTyping) {
+                return (
+                  <motion.div
+                    key={msg.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="flex items-end gap-2"
+                  >
+                    <div className="w-7 h-7 rounded-full overflow-hidden bg-card border border-border/30 flex-shrink-0 p-0.5">
+                      <img src={frostieAvatar} alt={AGENT_NAME} className="w-full h-full object-contain rounded-full" />
+                    </div>
+                    <div className="bg-card border border-border/40 rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1 shadow-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0s' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0.2s' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0.4s' }} />
+                    </div>
+                  </motion.div>
+                );
+              }
+
+              return (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className={cn("flex flex-col", msg.role === 'user' ? "items-end" : "items-start")}
+                >
+                  <div className={cn("flex items-end gap-2 max-w-[85%]", msg.role === 'user' && "flex-row-reverse")}>
+                    {msg.role === 'bot' && (
+                      <div className="w-6 h-6 rounded-full overflow-hidden bg-card border border-border/30 flex-shrink-0 p-0.5 mb-0.5">
+                        <img src={frostieAvatar} alt={AGENT_NAME} className="w-full h-full object-contain rounded-full" />
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-0.5">
+                      <div className={cn(
+                        "rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed relative",
+                        msg.role === 'user'
+                          ? "gradient-primary text-primary-foreground rounded-br-sm shadow-md shadow-primary/10"
+                          : "bg-card border border-border/40 rounded-bl-sm text-foreground shadow-sm"
+                      )}>
+                        {msg.text.split('**').map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
+                      </div>
+                      {msg.timestamp && (
+                        <span className={cn(
+                          "text-[8px] text-muted-foreground/50 px-1",
+                          msg.role === 'user' ? "text-right" : "text-left"
+                        )}>
+                          {formatTime(msg.timestamp)}
+                          {msg.role === 'user' && " ✓✓"}
+                        </span>
+                      )}
+                      {msg.widget && renderWidget(msg)}
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+
+          {isLoading && !messages.some(m => m.isTyping) && (
+            <div className="flex items-end gap-2">
+              <div className="w-7 h-7 rounded-full overflow-hidden bg-card border border-border/30 flex-shrink-0 p-0.5">
+                <img src={frostieAvatar} alt={AGENT_NAME} className="w-full h-full object-contain rounded-full" />
+              </div>
+              <div className="bg-card border border-border/40 rounded-2xl rounded-bl-sm px-3.5 py-2.5 flex gap-1 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0s' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0.2s' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-primary/30 animate-typing" style={{ animationDelay: '0.4s' }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom bar — branding */}
+        <div className="px-4 py-2 border-t border-border/30 bg-card/50 backdrop-blur-sm flex items-center justify-center gap-1.5">
+          <Snowflake className="h-3 w-3 text-primary/30" />
+          <span className="text-[9px] text-muted-foreground/50 font-medium">Powered by {AGENT_NAME} · Physique 57 India</span>
+        </div>
+      </div>
+
+      {/* Right Panel — Desktop hero */}
+      <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden">
+        <img
+          src="https://i.postimg.cc/Bvc0Nwhn/hp-Img-1774432711.jpg"
+          alt="Physique 57 India Studio"
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/5" />
+        <div className="absolute bottom-0 left-0 right-0 p-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.6 }}
+          >
+            <img src="/logo.png" alt="Physique 57 India" className="h-10 mb-4 brightness-0 invert opacity-80" loading="lazy" />
+            <h2 className="text-3xl font-bold text-white mb-2 tracking-tight leading-tight font-display">
+              Your Membership,<br />Your Control
+            </h2>
+            <p className="text-white/50 text-sm max-w-xs leading-relaxed">
+              Freeze, modify, or restart your membership in seconds with {AGENT_NAME}! ❄️
+            </p>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Confirm dialog */}
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <DialogContent className="sm:max-w-md border-border bg-background rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-foreground font-bold">{confirmDetails.title}</DialogTitle>
+            <DialogDescription>Please review the details below and confirm.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-3">
+            {confirmDetails.lines.map((line, i) => (
+              <p key={i} className="text-[13px] text-foreground">{line}</p>
+            ))}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setShowConfirm(false)} className="text-muted-foreground rounded-full">Cancel</Button>
+            <Button onClick={handleConfirmExecute} className="gradient-primary text-primary-foreground rounded-full shadow-lg shadow-primary/20">
+              <CheckCircle2 className="h-4 w-4 mr-2" /> Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
