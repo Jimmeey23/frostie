@@ -920,9 +920,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'ask-name-input':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="form-panel rounded-[26px] p-4">
               <div className="mb-3 flex items-center gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 shadow-sm">
+                <span className="form-icon-chip text-sky-600">
                   <User className="h-4 w-4" />
                 </span>
                 <div>
@@ -936,10 +936,10 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   onChange={e => setNameInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleNameSubmit()}
                   placeholder="e.g. John Doe"
-                  className="h-11 rounded-full border-white/70 bg-white/90 px-4 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                  className="form-field h-12 rounded-[18px]"
                   autoFocus
                 />
-                <Button onClick={handleNameSubmit} disabled={!nameInput.trim().includes(' ')} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                <Button onClick={handleNameSubmit} disabled={!nameInput.trim().includes(' ')} size="icon" className="form-action h-12 w-12 rounded-[18px] gradient-primary text-primary-foreground flex-shrink-0">
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
@@ -951,9 +951,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'ask-email-input':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="form-panel rounded-[26px] p-4">
               <div className="mb-3 flex items-center gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 shadow-sm">
+                <span className="form-icon-chip text-violet-600">
                   <Mail className="h-4 w-4" />
                 </span>
                 <div>
@@ -969,11 +969,11 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                     onChange={e => setEmailInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()}
                     placeholder="you@example.com"
-                    className="pl-9 h-11 rounded-full border-white/70 bg-white/90 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                    className="form-field h-12 rounded-[18px] pl-10"
                     autoFocus
                   />
                 </div>
-                <Button onClick={handleEmailSubmit} disabled={!emailInput.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                <Button onClick={handleEmailSubmit} disabled={!emailInput.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)} size="icon" className="form-action h-12 w-12 rounded-[18px] gradient-primary text-primary-foreground flex-shrink-0">
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
@@ -984,9 +984,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'ask-phone-input':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="form-panel rounded-[26px] p-4">
               <div className="mb-3 flex items-center gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 shadow-sm">
+                <span className="form-icon-chip text-emerald-600">
                   <Phone className="h-4 w-4" />
                 </span>
                 <div>
@@ -1002,11 +1002,11 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                     onChange={e => setPhoneInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handlePhoneSubmit()}
                     placeholder="+91 9876543210"
-                    className="pl-9 h-11 rounded-full border-white/70 bg-white/90 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                    className="form-field h-12 rounded-[18px] pl-10"
                     autoFocus
                   />
                 </div>
-                <Button onClick={handlePhoneSubmit} disabled={!phoneInput.trim() || phoneInput.trim().length < 6 || isLoading} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                <Button onClick={handlePhoneSubmit} disabled={!phoneInput.trim() || phoneInput.trim().length < 6 || isLoading} size="icon" className="form-action h-12 w-12 rounded-[18px] gradient-primary text-primary-foreground flex-shrink-0">
                   {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
               </div>
@@ -1018,9 +1018,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'otp':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl space-y-3">
+            <div className="form-panel rounded-[26px] space-y-3 p-4">
               <div className="flex items-center gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 shadow-sm">
+                <span className="form-icon-chip text-amber-600">
                   <Shield className="h-4 w-4" />
                 </span>
                 <div>
@@ -1031,11 +1031,11 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
               <div className="flex justify-center">
                 <InputOTP maxLength={6} value={otpCode} onChange={setOtpCode}>
                   <InputOTPGroup>
-                    {[0,1,2,3,4,5].map(i => <InputOTPSlot key={i} index={i} className="h-11 w-11 text-sm bg-white border-white/80 shadow-sm rounded-xl" />)}
+                    {[0,1,2,3,4,5].map(i => <InputOTPSlot key={i} index={i} className="h-12 w-12 rounded-[16px] border-white/80 bg-white/94 text-sm shadow-[0_12px_28px_-18px_rgba(15,23,42,0.3)]" />)}
                   </InputOTPGroup>
                 </InputOTP>
               </div>
-              <Button onClick={handleOtpVerify} disabled={otpCode.length !== 6 || isLoading} className="w-full h-10 gradient-primary text-primary-foreground text-sm font-semibold rounded-full shadow-lg shadow-primary/20">
+              <Button onClick={handleOtpVerify} disabled={otpCode.length !== 6 || isLoading} className="form-action h-11 w-full rounded-[18px] gradient-primary text-primary-foreground text-sm font-semibold">
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
                 Verify Code
               </Button>
@@ -1046,13 +1046,13 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'operations':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[26px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="form-panel rounded-[28px] p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Choose your path</p>
                   <h3 className="text-base font-semibold text-slate-950">What would you like Frostie to help with?</h3>
                 </div>
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-semibold text-sky-700">
+                <span className="form-pill text-sky-700">
                   Member tools
                 </span>
               </div>
@@ -1071,11 +1071,11 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   whileTap={{ scale: 0.98 }}
                   onClick={() => handleOperation(op)}
                   className={cn(
-                    "group flex min-h-[108px] flex-col items-start gap-2 rounded-2xl border bg-gradient-to-br p-3.5 text-left shadow-sm transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md",
+                    "group form-secondary flex min-h-[112px] flex-col items-start gap-2 rounded-[22px] border bg-gradient-to-br p-3.5 text-left cursor-pointer",
                     color
                   )}
                 >
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white/75 text-slate-700 shadow-sm transition-transform group-hover:scale-105">
+                  <span className="form-icon-chip h-9 w-9 rounded-[16px] text-slate-700 transition-transform group-hover:scale-105">
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="text-[13px] font-semibold text-foreground">{label}</span>
@@ -1087,9 +1087,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
                 onClick={() => handleOperation('ask')}
-                className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-indigo-200/70 bg-gradient-to-r from-indigo-500/10 via-violet-500/10 to-fuchsia-500/10 p-3.5 text-left shadow-sm transition-all hover:border-indigo-300 hover:shadow-md"
+                className="form-secondary mt-3 flex w-full items-center gap-3 rounded-[22px] border border-indigo-200/70 bg-gradient-to-r from-indigo-500/10 via-violet-500/10 to-fuchsia-500/10 p-3.5 text-left hover:border-indigo-300"
               >
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/75 text-indigo-600 shadow-sm">
+                <span className="form-icon-chip text-indigo-600">
                   <MessageCircle className="h-4 w-4" />
                 </span>
                 <div>
@@ -1106,7 +1106,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
         const list = msg.widget === 'memberships-all' ? memberships : filteredMemberships;
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5 space-y-2">
-            <div className="mb-1 rounded-[24px] border border-white/70 bg-white/80 p-3.5 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+              <div className="form-panel mb-1 rounded-[26px] p-3.5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Membership selection</p>
@@ -1131,17 +1131,17 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   onClick={() => isClickable && handleMembershipSelect(m)}
                   disabled={!isClickable}
                   className={cn(
-                    "group w-full rounded-[22px] border p-4 text-left transition-all",
+                    "group w-full rounded-[24px] border p-4 text-left transition-all",
                     m.isFrozen && "ring-2 ring-blue-300/40",
                     isClickable
-                      ? "border-white/70 bg-white/80 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.25)] backdrop-blur-xl cursor-pointer hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+                      ? "form-card cursor-pointer hover:-translate-y-0.5 hover:border-primary/30"
                       : "bg-white/50 border-white/40 opacity-60 cursor-not-allowed"
                   )}
                 >
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
                       <div className="mb-1 flex items-center gap-2">
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 shadow-sm">
+                        <span className="form-icon-chip h-8 w-8 rounded-[16px] text-sky-600">
                           <Snowflake className="h-4 w-4" />
                         </span>
                         <h4 className={cn("font-semibold text-[14px]", isClickable ? "text-foreground group-hover:text-primary" : "text-muted-foreground")}>
@@ -1222,7 +1222,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'freeze-reason':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="form-panel rounded-[26px] p-4">
               <div className="mb-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Optional context</p>
                 <h3 className="text-sm font-semibold text-slate-950">Why are you freezing this membership?</h3>
@@ -1234,7 +1234,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => handleReasonSelect(r.id)}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-foreground shadow-sm transition-all hover:border-primary/30 hover:bg-primary/5"
+                  className="form-secondary inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-2 text-[12px] font-medium text-foreground hover:border-primary/30 hover:bg-primary/5"
                 >
                   <span>{r.emoji}</span>{r.label}
                 </motion.button>
@@ -1243,7 +1243,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={handleSkipReason}
-                className="inline-flex items-center rounded-full border border-dashed border-slate-300 bg-transparent px-3 py-2 text-[11px] text-muted-foreground transition-all hover:text-foreground"
+                className="inline-flex items-center rounded-full border border-dashed border-slate-300/80 bg-white/30 px-3 py-2 text-[11px] text-muted-foreground transition-all hover:text-foreground"
               >
                 Skip →
               </motion.button>
@@ -1255,7 +1255,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'freeze-mode':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="form-panel rounded-[26px] p-4">
               <div className="mb-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Freeze options</p>
                 <h3 className="text-sm font-semibold text-slate-950">Do you want to freeze immediately or schedule dates?</h3>
@@ -1265,9 +1265,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleFreezeNow}
-                className="flex flex-col items-center gap-2 rounded-2xl border border-blue-200/70 bg-gradient-to-br from-blue-500/10 to-sky-500/5 p-4 shadow-sm transition-all hover:border-blue-400 hover:shadow-md"
+                className="form-secondary flex flex-col items-center gap-2 rounded-[22px] border border-blue-200/70 bg-gradient-to-br from-blue-500/10 to-sky-500/5 p-4 hover:border-blue-400"
               >
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-blue-600 shadow-sm">
+                <span className="form-icon-chip text-blue-600">
                   <Zap className="h-5 w-5" />
                 </span>
                 <span className="text-[13px] font-bold text-foreground">Freeze Now</span>
@@ -1277,9 +1277,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleScheduleFreeze}
-                className="flex flex-col items-center gap-2 rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-500/10 to-violet-500/5 p-4 shadow-sm transition-all hover:border-indigo-400 hover:shadow-md"
+                className="form-secondary flex flex-col items-center gap-2 rounded-[22px] border border-indigo-200/70 bg-gradient-to-br from-indigo-500/10 to-violet-500/5 p-4 hover:border-indigo-400"
               >
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-indigo-600 shadow-sm">
+                <span className="form-icon-chip text-indigo-600">
                   <CalendarIcon className="h-5 w-5" />
                 </span>
                 <span className="text-[13px] font-bold text-foreground">Schedule</span>
@@ -1296,7 +1296,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'unfreeze-mode':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/80 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="form-panel rounded-[26px] p-4">
               <div className="mb-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Unfreeze options</p>
                 <h3 className="text-sm font-semibold text-slate-950">How would you like this membership to resume?</h3>
@@ -1306,9 +1306,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleUnfreezeNow}
-                className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-500/10 to-teal-500/5 p-4 shadow-sm transition-all hover:border-emerald-400 hover:shadow-md"
+                className="form-secondary flex flex-col items-center gap-2 rounded-[22px] border border-emerald-200/70 bg-gradient-to-br from-emerald-500/10 to-teal-500/5 p-4 hover:border-emerald-400"
               >
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-emerald-600 shadow-sm">
+                <span className="form-icon-chip text-emerald-600">
                   <Zap className="h-5 w-5" />
                 </span>
                 <span className="text-[13px] font-bold text-foreground">Unfreeze Now</span>
@@ -1318,9 +1318,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleScheduleUnfreeze}
-                className="flex flex-col items-center gap-2 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-500/10 to-orange-500/5 p-4 shadow-sm transition-all hover:border-amber-400 hover:shadow-md"
+                className="form-secondary flex flex-col items-center gap-2 rounded-[22px] border border-amber-200/70 bg-gradient-to-br from-amber-500/10 to-orange-500/5 p-4 hover:border-amber-400"
               >
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-amber-600 shadow-sm">
+                <span className="form-icon-chip text-amber-600">
                   <CalendarIcon className="h-5 w-5" />
                 </span>
                 <span className="text-[13px] font-bold text-foreground">Schedule</span>
@@ -1337,7 +1337,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'freeze-dates':
         return selectedMembership ? (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl space-y-3">
+            <div className="form-panel rounded-[26px] space-y-3 p-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Schedule freeze</p>
                 <h3 className="text-sm font-semibold text-slate-950">Choose your freeze window</h3>
@@ -1347,7 +1347,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   <Label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 block">Start</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" className={cn("w-full h-9 justify-start text-left text-xs font-normal bg-background border-border rounded-lg", !freezeStartDate && "text-muted-foreground")}>
+                      <Button variant="outline" className={cn("form-field h-11 w-full justify-start rounded-[16px] border-white/80 bg-white/92 text-left text-xs font-normal", !freezeStartDate && "text-muted-foreground")}>
                         <CalendarIcon className="mr-1.5 h-3 w-3" />
                         {freezeStartDate ? format(freezeStartDate, "dd MMM yyyy") : "Select"}
                       </Button>
@@ -1361,7 +1361,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   <Label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 block">End</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" className={cn("w-full h-9 justify-start text-left text-xs font-normal bg-background border-border rounded-lg", !freezeEndDate && "text-muted-foreground")}>
+                      <Button variant="outline" className={cn("form-field h-11 w-full justify-start rounded-[16px] border-white/80 bg-white/92 text-left text-xs font-normal", !freezeEndDate && "text-muted-foreground")}>
                         <CalendarIcon className="mr-1.5 h-3 w-3" />
                         {freezeEndDate ? format(freezeEndDate, "dd MMM yyyy") : "Select"}
                       </Button>
@@ -1374,15 +1374,15 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
               </div>
 
               {freezeDays > 0 && (
-                <div className="rounded-2xl border border-primary/10 bg-primary/5 p-3 text-[11px] space-y-0.5">
+                <div className="form-card rounded-[20px] border border-primary/10 bg-primary/5 p-3 text-[11px] space-y-0.5">
                   <p className="font-semibold text-foreground">{freezeDays} day{freezeDays !== 1 ? 's' : ''} selected</p>
                   {resumeDateCalc && <p className="text-muted-foreground">Resume: <span className="font-medium text-foreground">{format(resumeDateCalc, 'dd MMM yyyy')}</span></p>}
                 </div>
               )}
 
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground rounded-lg h-9">← Back</Button>
-                <Button onClick={handleFreezeSubmit} disabled={!freezeStartDate || !freezeEndDate} className="flex-1 h-10 gradient-primary text-primary-foreground text-sm font-semibold rounded-full shadow-lg shadow-primary/20">
+                <Button variant="ghost" size="sm" onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground rounded-[16px] h-10">← Back</Button>
+                <Button onClick={handleFreezeSubmit} disabled={!freezeStartDate || !freezeEndDate} className="form-action flex-1 h-11 rounded-[18px] gradient-primary text-primary-foreground text-sm font-semibold">
                   <Snowflake className="h-3.5 w-3.5 mr-1.5" /> Freeze
                 </Button>
               </div>
@@ -1393,7 +1393,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'modify-unfreeze':
         return selectedMembership ? (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl space-y-3">
+            <div className="form-panel rounded-[26px] space-y-3 p-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Schedule unfreeze</p>
                 <h3 className="text-sm font-semibold text-slate-950">Choose when this membership should resume</h3>
@@ -1402,7 +1402,7 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 <Label className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-1 block">Unfreeze Date</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("w-full h-9 justify-start text-left text-xs font-normal bg-background border-border rounded-lg", !unfreezeDate && "text-muted-foreground")}>
+                    <Button variant="outline" className={cn("form-field h-11 w-full justify-start rounded-[16px] border-white/80 bg-white/92 text-left text-xs font-normal", !unfreezeDate && "text-muted-foreground")}>
                       <CalendarIcon className="mr-1.5 h-3 w-3" />
                       {unfreezeDate ? format(unfreezeDate, "dd MMM yyyy") : "Select unfreeze date"}
                     </Button>
@@ -1413,13 +1413,13 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                 </Popover>
               </div>
               {unfreezeResume && (
-                <div className="bg-primary/5 border border-primary/10 rounded-lg p-2.5 text-[11px]">
+                <div className="form-card rounded-[18px] border border-primary/10 bg-primary/5 p-2.5 text-[11px]">
                   <p className="text-muted-foreground">Resume: <span className="font-medium text-foreground">{format(unfreezeResume, 'dd MMM yyyy')}</span></p>
                 </div>
               )}
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground rounded-lg h-9">← Back</Button>
-                <Button onClick={handleUnfreezeSubmit} disabled={!unfreezeDate} className="flex-1 h-10 gradient-primary text-primary-foreground text-sm font-semibold rounded-full shadow-lg shadow-primary/20">
+                <Button variant="ghost" size="sm" onClick={handleBackToOperations} className="text-[10px] text-muted-foreground hover:text-foreground rounded-[16px] h-10">← Back</Button>
+                <Button onClick={handleUnfreezeSubmit} disabled={!unfreezeDate} className="form-action flex-1 h-11 rounded-[18px] gradient-primary text-primary-foreground text-sm font-semibold">
                   <Clock className="h-3.5 w-3.5 mr-1.5" /> Schedule Unfreeze
                 </Button>
               </div>
@@ -1430,9 +1430,9 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
       case 'chat-input':
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-2.5">
-            <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.3)] backdrop-blur-xl">
+            <div className="form-panel rounded-[26px] p-4">
               <div className="mb-3 flex items-center gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-sm">
+                <span className="form-icon-chip text-indigo-600">
                   <MessageCircle className="h-4 w-4" />
                 </span>
                 <div>
@@ -1446,10 +1446,10 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleChatSubmit()}
                   placeholder="Ask me anything about P57..."
-                  className="h-11 rounded-full border-white/70 bg-white/90 px-4 text-sm shadow-sm focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+                  className="form-field h-12 rounded-[18px]"
                   autoFocus
                 />
-                <Button onClick={handleChatSubmit} disabled={!chatInput.trim()} size="icon" className="h-11 w-11 rounded-full gradient-primary text-primary-foreground shadow-lg shadow-primary/20 flex-shrink-0">
+                <Button onClick={handleChatSubmit} disabled={!chatInput.trim()} size="icon" className="form-action h-12 w-12 rounded-[18px] gradient-primary text-primary-foreground flex-shrink-0">
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
@@ -1802,14 +1802,6 @@ export default function ChatInterface({ onComplete }: { onComplete?: () => void 
         <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(100,116,139,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(100,116,139,0.08)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_78%_56%_at_50%_50%,#000_68%,transparent_110%)]" />
 
         <InteractiveRobotSpline scene={ROBOT_SPLINE_URL} className="absolute inset-0 h-full w-full" />
-
-        <div className="absolute left-8 top-8 z-10 max-w-xs rounded-[28px] border border-white/70 bg-white/72 p-5 shadow-[0_24px_80px_-30px_rgba(15,23,42,0.35)] backdrop-blur-2xl">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-violet-600/80">Interactive concierge</p>
-          <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Frostie</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Your Physique 57 membership expert for freezes, restarts, bookings, schedules, and polished support that feels on-brand.
-          </p>
-        </div>
 
         <div className="absolute bottom-8 left-8 right-8 z-10 rounded-[28px] border border-white/70 bg-white/70 p-5 shadow-[0_24px_80px_-30px_rgba(15,23,42,0.35)] backdrop-blur-2xl">
           <div className="flex flex-wrap gap-2">

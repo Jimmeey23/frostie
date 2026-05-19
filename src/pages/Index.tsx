@@ -6,6 +6,7 @@ import InteractiveRobotSpline from "@/components/InteractiveRobotSpline";
 import WhatsAppWidget from "@/components/WhatsAppWidget";
 import { cn } from "@/lib/utils";
 import { ROBOT_SPLINE_URL } from "@/lib/galleryImages";
+import { HERO_COPY_OPTIONS } from "@/lib/marketingCopy";
 
 function ElegantShape({
   className,
@@ -54,6 +55,7 @@ function ElegantShape({
 
 export default function Index() {
   const [showChat, setShowChat] = useState(false);
+  const [copyIndex, setCopyIndex] = useState(0);
 
   useEffect(() => {
     if (!showChat) return;
@@ -67,6 +69,16 @@ export default function Index() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showChat]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCopyIndex((current) => (current + 1) % HERO_COPY_OPTIONS.length);
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const activeCopy = HERO_COPY_OPTIONS[copyIndex];
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#f5f7fb] text-foreground">
@@ -134,18 +146,23 @@ export default function Index() {
             transition={{ delay: 0.18, duration: 0.8 }}
             className="max-w-3xl"
           >
-            <h1 className="font-display text-5xl font-bold leading-[0.95] tracking-tight text-slate-950 sm:text-6xl lg:text-7xl xl:text-[5.3rem]">
-              Meet Frostie,
-              <br />
-              <span className="bg-gradient-to-r from-sky-600 via-violet-600 to-fuchsia-500 bg-clip-text text-transparent">
-                your membership concierge
-              </span>
-            </h1>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={copyIndex}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+              >
+                <h1 className="font-display text-5xl font-bold leading-[0.95] tracking-tight text-slate-950 sm:text-6xl lg:text-7xl xl:text-[5.3rem]">
+                  {activeCopy.main}
+                </h1>
 
-            <p className="mt-6 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
-              A polished, brand-friendly support experience for freezes, unfreezes, restarts, live booking lookups,
-              schedule questions, and all-time membership freeze history—without making members dig through menus like it’s 2011.
-            </p>
+                <p className="mt-6 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
+                  {activeCopy.sub}
+                </p>
+              </motion.div>
+            </AnimatePresence>
 
             <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
               <motion.button
@@ -210,7 +227,7 @@ export default function Index() {
             <div className="relative flex h-full w-full items-end">
               <InteractiveRobotSpline
                 scene={ROBOT_SPLINE_URL}
-                className="h-full w-full"
+                className="h-full w-full translate-x-[10%] scale-[1.02]"
               />
             </div>
           </motion.div>
